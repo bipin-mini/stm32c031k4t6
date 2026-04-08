@@ -1,0 +1,12 @@
+# Ignore documentation PDFs and folders
+doc/
+
+# Ignore build artifacts
+target/
+build/
+
+# Optional: ignore common temp files
+*.log
+*.tmp
+*.swp
+.DS_Store
