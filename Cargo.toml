@@ -1,0 +1,32 @@
+[package]
+name = "dro08"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bipin <you@example.com>"]
+description = "Digital Readout"
+license = "MIT"
+
+[dependencies]
+cortex-m = "0.7.7"
+cortex-m-rt= "0.7.5"
+cortex-m-rtic= "1.1.4"
+stm32c0 = { version = "0.16.0", features = ["stm32c031", "rt"] }
+panic-halt = "0.2.0"
+systick-monotonic = "1.0.1"
+
+
+[profile.dev]
+codegen-units = 1
+debug = true
+incremental = false
+lto = false
+opt-level = 2
+
+[profile.release]
+debug = false
+codegen-units = 1
+incremental = false
+lto = true
+opt-level = "z"
+panic = "abort"
+strip = true
