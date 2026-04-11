@@ -38,7 +38,7 @@ This firmware implements a **Digital Readout (DRO)** system for an incremental q
 
 * Interrupt-driven GPIO (both edges)
 * 4-bit LUT decoding (branchless)
-* Maximum rate: 100,000 counts/sec (X4 → 400,000 edges/sec)
+* Maximum rate: X4 → 100,000 edges/sec
 
 ### 🔹 Quadrature Decode Algorithm (Mandatory)
 
@@ -46,16 +46,6 @@ This firmware implements a **Digital Readout (DRO)** system for an incremental q
 * LUT output: {-1, 0, +1}
 * Result accumulated into pulse counter
 
-#### Mandatory LUT Definition
-
-```c
-static const int8_t qdec_lut[16] = {
-  0, -1, +1, 0,
-  +1, 0, 0, -1,
-  -1, 0, 0, +1,
-  0, +1, -1, 0
-};
-```
 
 #### State Handling (MANDATORY)
 
@@ -74,7 +64,7 @@ static const int8_t qdec_lut[16] = {
 
 * Interrupt on both edges (A & B)
 * Separate EXTI lines (no sharing)
-* Same priority level (no preemption among A/B/Z)
+* Same priority level (no preemption among A/B)
 
 ### 🔹 Atomic Sampling Requirement
 
@@ -84,12 +74,12 @@ static const int8_t qdec_lut[16] = {
 ### 🔹 Latency Constraint
 
 * Worst-case latency < minimum encoder edge interval
-* Minimum valid pulse width ≥ 200 ns
+* Minimum valid pulse width ≥ 800 ns
 * Minimum pulse width ≥ 5 × ISR latency
 
 ### 🔹 Interrupt Load Requirement
 
-* System must sustain ≥ 400,000 interrupts/sec
+* System must sustain ≥ 100,000 interrupts/sec
 * All pending EXTI events must be serviced sequentially (no intentional drop)
 
 ### 🔹 Input Signal Integrity
@@ -190,9 +180,6 @@ Engineering Value = Pulse Count × Scaling Factor
 
 * DE LOW → RX
 
-* DE HIGH → TX
-
-* DE LOW → RX
 
 ### Timing Requirements
 
@@ -356,14 +343,6 @@ Engineering Value = Pulse Count × Scaling Factor
 
 ---
 
-## Fast ISR Pattern
-
-```c
-uint32_t idr = GPIOA->IDR;
-uint8_t curr = idr & 0x3;
-```
-
----
 
 ## Constraints
 
