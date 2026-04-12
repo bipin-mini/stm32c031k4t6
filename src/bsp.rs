@@ -11,7 +11,7 @@ use stm32c0::stm32c031 as pac;
 /// ---------------------------------------------------------------------------
 ///
 /// - BSP performs **one-time hardware configuration only**
-/// - BSP is **stateless** (no ownership, no global state)
+/// - BSP is **stateless (no ownership, no global state)**
 /// - BSP does NOT contain any application logic
 /// - BSP does NOT depend on higher-level modules (like encoder)
 ///
@@ -45,6 +45,17 @@ use stm32c0::stm32c031 as pac;
 /// - EXTI configured for BOTH edges → required for X4 decoding
 ///
 /// ---------------------------------------------------------------------------
+/// 🧩 EXTI ROUTING NOTE (STM32C0 / v0.16.0 PAC)
+/// ---------------------------------------------------------------------------
+///
+/// On this device and PAC version:
+///
+/// - EXTI line-to-pin mapping is FIXED at reset for GPIOA (PA0–PA15)
+/// - No SYSCFG_EXTICR register is exposed in this PAC
+/// - Therefore EXTI0/1/2 are implicitly mapped to PA0/PA1/PA2
+///
+/// ✔ This BSP intentionally relies on this fixed hardware behavior.
+/// ---------------------------------------------------------------------------
 
 /// ---------------------------------------------------------------------------
 /// GPIOA Initialization
@@ -60,49 +71,27 @@ use stm32c0::stm32c031 as pac;
 /// ---------------------------------------------------------------------------
 ///
 /// - Input mode ensures no interference with external encoder driver
-/// - Floating input assumes encoder provides push-pull or line driver
+/// - Floating input assumes encoder provides push-pull output stage
+///   (if open-collector, use pull-ups instead)
 /// - Same port (GPIOA) enables atomic sampling in ISR
 ///
 pub fn init_gpioa(gpioa: &pac::GPIOA) {
-    // ---------------------------------------------------------------------
-    // 1. MODE CONFIGURATION
-    // ---------------------------------------------------------------------
-    //
-    // Set PA0, PA1, PA2 → INPUT mode
-    //
-    // This disables:
-    // - output drivers (prevents contention)
-    // - analog mode leakage paths
-    //
+    // MODE CONFIGURATION
     gpioa.moder().modify(|_, w| {
         w.mode0().input();
         w.mode1().input();
         w.mode2().input()
     });
 
-    // ---------------------------------------------------------------------
-    // 2. PULL-UP / PULL-DOWN CONFIGURATION
-    // ---------------------------------------------------------------------
-    //
-    // Floating inputs assume:
-    // - external encoder actively drives signals
-    //
-    // If encoder is open-collector/open-drain:
-    // → change to pull-up
-    //
+    // PULL-UP / PULL-DOWN CONFIGURATION
     gpioa.pupdr().modify(|_, w| {
         w.pupd0().floating();
         w.pupd1().floating();
         w.pupd2().floating()
     });
 
-    // ---------------------------------------------------------------------
-    // 3. OUTPUT SPEED CONFIGURATION
-    // ---------------------------------------------------------------------
-    //
-    // Not functionally required for inputs,
-    // but explicitly set for deterministic register state.
-    //
+    // OUTPUT SPEED CONFIGURATION
+    // Not functionally required for inputs; kept only for deterministic reset state.
     gpioa.ospeedr().modify(|_, w| {
         w.ospeed0().low_speed();
         w.ospeed1().low_speed();
@@ -133,61 +122,45 @@ pub fn init_gpioa(gpioa: &pac::GPIOA) {
 ///
 /// - Rising edges set RPR1
 /// - Falling edges set FPR1
-/// - BOTH must be cleared in ISR
+/// - BOTH must be cleared in ISR or during init
 ///
 pub fn init_exti(exti: &pac::EXTI) {
-    // ---------------------------------------------------------------------
-    // 1. RISING EDGE CONFIGURATION
-    // ---------------------------------------------------------------------
-    //
-    // Trigger on LOW → HIGH transitions
-    //
+    // RISING EDGE CONFIGURATION
     exti.rtsr1().modify(|_, w| {
         w.rt0().set_bit();
         w.rt1().set_bit();
         w.rt2().set_bit()
     });
 
-    // ---------------------------------------------------------------------
-    // 2. FALLING EDGE CONFIGURATION
-    // ---------------------------------------------------------------------
-    //
-    // Trigger on HIGH → LOW transitions
-    //
+    // FALLING EDGE CONFIGURATION
     exti.ftsr1().modify(|_, w| {
         w.ft0().set_bit();
         w.ft1().set_bit();
         w.ft2().set_bit()
     });
 
-    // ---------------------------------------------------------------------
-    // 3. CLEAR PENDING FLAGS
-    // ---------------------------------------------------------------------
-    //
-    // Ensures no stale interrupt is pending before enabling
-    //
-    // Without this:
-    // → ISR may fire immediately after unmask
-    //
+    // CLEAR PENDING FLAGS (RISING)
     exti.rpr1().write(|w| {
         w.rpif0().set_bit();
         w.rpif1().set_bit();
         w.rpif2().set_bit()
     });
 
-    // Ensure write completes before proceeding
+    // CLEAR PENDING FLAGS (FALLING)
+    exti.fpr1().write(|w| {
+        w.fpif0().set_bit();
+        w.fpif1().set_bit();
+        w.fpif2().set_bit()
+    });
+
     cortex_m::asm::dsb();
     cortex_m::asm::isb();
 
-    // ---------------------------------------------------------------------
-    // 4. INTERRUPT MASK (ENABLE)
-    // ---------------------------------------------------------------------
+    // INTERRUPT MASK (ENABLE)
     //
-    // Unmask EXTI lines 0,1,2
-    //
-    // After this:
-    // → events propagate to NVIC
-    //
+    // NOTE:
+    // STM32C0 PAC exposes IMR1 as raw bitfield register.
+    // Therefore we must use raw bits(), not field accessors.
     exti.imr1().write(|w| unsafe { w.bits(0b111) });
 }
 
@@ -205,24 +178,11 @@ pub fn init_exti(exti: &pac::EXTI) {
 /// - Explicit enable avoids hidden dependencies
 ///
 pub fn init_clocks(rcc: &pac::RCC) {
-    // ---------------------------------------------------------------------
-    // 1. GPIOA CLOCK ENABLE
-    // ---------------------------------------------------------------------
-    //
-    // Required for:
-    // - reading IDR in encoder ISR
-    //
+    // GPIOA CLOCK ENABLE
     rcc.iopenr().modify(|_, w| w.gpioaen().set_bit());
 
-    // ---------------------------------------------------------------------
-    // 2. SYSCFG CLOCK ENABLE
-    // ---------------------------------------------------------------------
-    //
-    // Required for:
-    // - EXTI line routing (port selection)
-    //
+    // SYSCFG CLOCK ENABLE (kept for completeness; EXTI routing is fixed in this PAC)
     rcc.apbenr2().modify(|_, w| w.syscfgen().set_bit());
 
-    // Ensure clock is active before peripheral access
     cortex_m::asm::dsb();
 }

@@ -124,13 +124,10 @@ use stm32c0::stm32c031::{EXTI, GPIOA};
 #[link_section = ".data"]
 static LUT: [i8; 16] = [
     // prev = 00
-     0,  1, -1,  0,
-    // prev = 01
-    -1,  0,  0,  1,
-    // prev = 10
-     1,  0,  0, -1,
-    // prev = 11
-     0, -1,  1,  0,
+    0, 1, -1, 0, // prev = 01
+    -1, 0, 0, 1, // prev = 10
+    1, 0, 0, -1, // prev = 11
+    0, -1, 1, 0,
 ];
 
 /// ---------------------------------------------------------------------------
@@ -187,7 +184,8 @@ pub fn init() {
         // Extract initial A/B state
         PREV_STATE = (
             ((idr >> 0) & 1) |        // A → bit0
-            (((idr >> 1) & 1) << 1)   // B → bit1
+            (((idr >> 1) & 1) << 1)
+            // B → bit1
         ) as u8;
     }
 }
@@ -279,7 +277,7 @@ pub fn isr() {
         // 1. Direct peripheral access (constant addresses, optimized by compiler)
         // -----------------------------------------------------------------
         let gpioa = &*GPIOA::ptr();
-        let exti  = &*EXTI::ptr();
+        let exti = &*EXTI::ptr();
 
         // -----------------------------------------------------------------
         // 2. Atomic GPIO read

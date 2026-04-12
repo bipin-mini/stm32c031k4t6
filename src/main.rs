@@ -99,15 +99,14 @@ mod app {
     ///
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
-
         // -----------------------------------------------------------------
         // PERIPHERAL OWNERSHIP (RTIC)
         // -----------------------------------------------------------------
         let dp = ctx.device;
 
         let gpioa = dp.GPIOA;
-        let exti  = dp.EXTI;
-        let rcc   = dp.RCC;
+        let exti = dp.EXTI;
+        let rcc = dp.RCC;
 
         // -----------------------------------------------------------------
         // BSP: CLOCK ENABLE
