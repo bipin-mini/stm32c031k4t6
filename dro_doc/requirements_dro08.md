@@ -46,7 +46,6 @@ This firmware implements a **Digital Readout (DRO)** system for an incremental q
 * LUT output: {-1, 0, +1}
 * Result accumulated into pulse counter
 
-
 #### State Handling (MANDATORY)
 
 * ISR shall read both A and B from GPIO on every interrupt
@@ -180,7 +179,6 @@ Engineering Value = Pulse Count × Scaling Factor
 
 * DE LOW → RX
 
-
 ### Timing Requirements
 
 * DE asserted before first byte
@@ -225,8 +223,16 @@ Engineering Value = Pulse Count × Scaling Factor
 
 ## 12. Power Management
 
+### Power Sense (MANDATORY)
+
+* Dedicated GPIO with EXTI interrupt
+* Falling edge indicates power failure
+* Must use non-shared EXTI line
+* Signal must transition before VDD falls below safe operating level
+
 ### Safe Shutdown
 
+* Triggered by power-fail interrupt
 * Relays OFF
 * Encoder count saved
 * Communication stopped
@@ -269,6 +275,7 @@ Engineering Value = Pulse Count × Scaling Factor
 ### ISR Rules
 
 * Encoder ISR: counting only
+* Power-fail ISR: flag only (no flash or blocking operations)
 * No scaling/UI/Modbus inside ISR
 
 ### Main Loop
@@ -277,6 +284,7 @@ Engineering Value = Pulse Count × Scaling Factor
 * Display
 * Modbus
 * Relay logic
+* Power-fail handling sequence
 
 ---
 
@@ -334,6 +342,12 @@ Engineering Value = Pulse Count × Scaling Factor
 | RX     | PA10 |
 | DE/RE  | PA3  |
 
+## Power Sense
+
+| Signal    | Pin |
+| --------- | --- |
+| PWR_SENSE | PA6 |
+
 ## Relay
 
 | Function | Pin |
@@ -341,14 +355,22 @@ Engineering Value = Pulse Count × Scaling Factor
 | LOW      | PB0 |
 | HIGH     | PB1 |
 
----
+## Debug / Programming (SWD)
 
+| Signal | Pin  |
+| ------ | ---- |
+| SWDIO  | PA13 |
+| SWCLK  | PA14 |
+| NRST   | NRST |
+
+---
 
 ## Constraints
 
 * Same GPIO port for encoder
-* No EXTI sharing
+* No EXTI sharing (including power sense)
 * No HAL inside ISR
+* SWD pins shall not be used for application I/O
 
 ---
 

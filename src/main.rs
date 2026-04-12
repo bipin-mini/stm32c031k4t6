@@ -4,24 +4,39 @@
 /// ---------------------------------------------------------------------
 /// APPLICATION MODULE STRUCTURE
 /// ---------------------------------------------------------------------
-/// This is an RTIC-based real-time firmware for STM32C031.
 ///
-/// SYSTEM PURPOSE:
-/// - High-speed quadrature encoder acquisition (future module)
-/// - Deterministic interrupt-driven processing
-/// - Low-latency embedded control system foundation
+/// Target MCU: STM32C031
 ///
-/// ARCHITECTURE:
+/// This is an RTIC-based real-time firmware.
+///
+/// ---------------------------------------------------------------------
+/// 🧠 SYSTEM PURPOSE
+/// ---------------------------------------------------------------------
+///
+/// - High-speed quadrature encoder acquisition (interrupt-driven)
+/// - Deterministic real-time processing
+/// - Foundation for industrial DRO system
+///
+/// ---------------------------------------------------------------------
+/// 🏗️ ARCHITECTURE
+/// ---------------------------------------------------------------------
+///
 /// - RTIC owns all peripherals (single ownership model)
-/// - BSP performs hardware bring-up only
-/// - Tasks handle runtime logic
+/// - BSP performs hardware bring-up only (stateless)
+/// - encoder.rs handles ONLY ISR-level decoding
+/// - Main loop / tasks handle scaling, UI, communication
 ///
-/// DESIGN GOALS:
-/// - deterministic execution
-/// - ISR-safe architecture
-/// - zero dynamic allocation
-/// - predictable timing behavior
+/// ---------------------------------------------------------------------
+/// ⚙️ DESIGN GOALS
+/// ---------------------------------------------------------------------
+///
+/// - Deterministic execution (cycle-bounded ISR)
+/// - Zero dynamic allocation
+/// - Interrupt-safe architecture
+/// - Clear separation of responsibilities
+///
 mod bsp;
+mod encoder;
 
 use panic_halt as _;
 
@@ -35,137 +50,170 @@ mod app {
     use super::*;
 
     /// ---------------------------------------------------------------------
-    /// MONOTONIC TIMER
+    /// MONOTONIC TIMER (SysTick आधारित RTIC timebase)
     /// ---------------------------------------------------------------------
-    /// Provides RTIC timebase for:
-    /// - scheduling tasks
-    /// - periodic execution (blink, sampling, control loops)
-    /// - future encoder sampling synchronization
     ///
-    /// NOTE:
-    /// Frequency MUST match actual system clock configuration.
+    /// Provides:
+    /// - task scheduling
+    /// - delays
+    /// - periodic execution
+    ///
+    /// ⚠️ MUST match actual system clock
+    ///
     #[monotonic(binds = SysTick, default = true)]
     type SysMono = Systick<1000>;
 
     /// ---------------------------------------------------------------------
     /// SHARED RESOURCES
     /// ---------------------------------------------------------------------
-    /// Resources accessed across multiple tasks or interrupts.
     ///
-    /// Currently empty, but will later include:
-    /// - encoder count
-    /// - scaling factor
+    /// Currently unused.
+    ///
+    /// Future:
+    /// - encoder value (if synchronized access required)
     /// - Modbus buffers
+    ///
     #[shared]
     struct Shared {}
 
     /// ---------------------------------------------------------------------
     /// LOCAL RESOURCES
     /// ---------------------------------------------------------------------
-    /// Task-local state (not shared between tasks/interrupts).
     ///
-    /// Typical future uses:
-    /// - debounced button state
-    /// - temporary buffers
-    /// - ISR shadow variables
+    /// Task-local (non-shared) state.
+    ///
     #[local]
     struct Local {}
 
     /// ---------------------------------------------------------------------
-    /// SYSTEM INITIALIZATION ENTRY POINT
+    /// SYSTEM INITIALIZATION
     /// ---------------------------------------------------------------------
     ///
-    /// This function runs once at boot.
+    /// Execution order is **strict and intentional**:
     ///
-    /// RESPONSIBILITIES:
-    /// 1. Extract PAC peripherals (single ownership)
-    /// 2. Perform hardware bring-up via BSP
-    /// 3. Initialize system timer (monotonic clock)
-    /// 4. Start first scheduled tasks
+    /// 1. Enable clocks
+    /// 2. Configure GPIO
+    /// 3. Configure EXTI
+    /// 4. Initialize encoder state
+    /// 5. Start RTIC scheduling
     ///
-    /// ORDER IS CRITICAL:
-    /// Clock → GPIO → EXTI → RTIC tasks
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
 
         // -----------------------------------------------------------------
-        // PERIPHERAL OWNERSHIP ACQUISITION
+        // PERIPHERAL OWNERSHIP (RTIC)
         // -----------------------------------------------------------------
-        // RTIC provides full ownership of device peripherals here.
-        // These are split manually and passed into BSP.
         let dp = ctx.device;
 
         let gpioa = dp.GPIOA;
-        let exti = dp.EXTI;
-        let rcc = dp.RCC;
+        let exti  = dp.EXTI;
+        let rcc   = dp.RCC;
 
         // -----------------------------------------------------------------
-        // HARDWARE BRING-UP (BSP LAYER)
+        // BSP: CLOCK ENABLE
         // -----------------------------------------------------------------
-        // BSP configures hardware registers deterministically.
-        // It does NOT store state or take ownership.
         //
-        // CLOCK CONFIGURATION:
-        // Enables required peripheral clocks
+        // Required before accessing GPIO / SYSCFG / EXTI
+        //
         bsp::init_clocks(&rcc);
 
-        // GPIO CONFIGURATION:
-        // Configures encoder pins PA0–PA2
+        // -----------------------------------------------------------------
+        // BSP: GPIO CONFIGURATION
+        // -----------------------------------------------------------------
+        //
+        // Configures:
+        // PA0 → ENC_A
+        // PA1 → ENC_B
+        // PA2 → ENC_Z
+        //
         bsp::init_gpioa(&gpioa);
 
-        // EXTI CONFIGURATION:
-        // Enables edge-triggered interrupt system for encoder signals
+        // -----------------------------------------------------------------
+        // BSP: EXTI CONFIGURATION
+        // -----------------------------------------------------------------
+        //
+        // Enables:
+        // - both edge detection
+        // - EXTI0,1,2 lines
+        //
         bsp::init_exti(&exti);
 
         // -----------------------------------------------------------------
-        // MONOTONIC TIMER INITIALIZATION
+        // ENCODER INITIALIZATION
         // -----------------------------------------------------------------
-        // SysTick is configured as RTIC scheduling backbone.
-        // Frequency must match actual CPU clock.
+        //
+        // MUST be done AFTER GPIO setup
+        //
+        // Purpose:
+        // - capture initial A/B state
+        // - avoid false first transition
+        //
+        encoder::init();
+
+        // -----------------------------------------------------------------
+        // MONOTONIC TIMER INIT
+        // -----------------------------------------------------------------
+        //
+        // NOTE:
+        // Currently assumes 16 MHz system clock (default HSI)
+        //
         let mono = Systick::new(ctx.core.SYST, 16_000_000);
 
         // -----------------------------------------------------------------
-        // STARTUP TASK SCHEDULING
+        // START SYSTEM TASKS
         // -----------------------------------------------------------------
-        // Kick off periodic system task.
-        //
-        // This is non-blocking and safe failure is ignored here
-        // (startup phase, system not yet loaded).
         blink::spawn().ok();
 
-        // -----------------------------------------------------------------
-        // RETURN RTIC RESOURCES
-        // -----------------------------------------------------------------
-        // Shared + Local resources are initialized here.
-        // Monotonics returned to RTIC scheduler.
         (Shared {}, Local {}, init::Monotonics(mono))
     }
 
     /// ---------------------------------------------------------------------
-    /// PERIODIC TASK: BLINK (PLACEHOLDER SYSTEM HEARTBEAT)
+    /// EXTI INTERRUPT HANDLER (ENCODER CORE)
     /// ---------------------------------------------------------------------
     ///
-    /// PURPOSE:
-    /// - validate RTIC scheduling
-    /// - verify monotonic timer functionality
-    /// - act as placeholder for system heartbeat
+    /// Handles:
+    /// - EXTI0 → ENC_A (PA0)
+    /// - EXTI1 → ENC_B (PA1)
     ///
-    /// FUTURE USE:
-    /// - status LED blink
-    /// - system alive indicator
-    /// - watchdog feed point
+    /// ⚠️ CRITICAL DESIGN:
+    ///
+    /// - This ISR must be **highest priority (after power-fail)**
+    /// - Must execute in bounded time (~50–60 cycles)
+    /// - Must NOT perform any non-deterministic work
+    ///
+    /// Delegates ALL logic to encoder.rs
+    ///
+    #[task(binds = EXTI0_1, priority = 2)]
+    fn exti0_1(_ctx: exti0_1::Context) {
+        encoder::isr();
+    }
+
+    /// ---------------------------------------------------------------------
+    /// EXTI2 HANDLER (INDEX PULSE - FUTURE)
+    /// ---------------------------------------------------------------------
+    ///
+    /// Reserved for:
+    /// - ENC_Z (index pulse)
+    ///
+    /// Currently not implemented.
+    ///
+    #[task(binds = EXTI2_3, priority = 2)]
+    fn exti2_3(_ctx: exti2_3::Context) {
+        // Future:
+        // encoder::index_isr();
+    }
+
+    /// ---------------------------------------------------------------------
+    /// PERIODIC TASK: SYSTEM HEARTBEAT
+    /// ---------------------------------------------------------------------
+    ///
+    /// Purpose:
+    /// - validate RTIC scheduling
+    /// - placeholder for watchdog feed
+    ///
     #[task]
     fn blink(_ctx: blink::Context) {
-
-        // -----------------------------------------------------------------
-        // PERIODIC RESCHEDULING
-        // -----------------------------------------------------------------
-        // Re-schedules itself every 500 ms.
-        //
-        // NOTE:
-        // In production systems:
-        // - failure to schedule should be logged
-        // - not silently ignored
+        // Re-schedule periodically
         blink::spawn_after(500.millis()).ok();
     }
 }
