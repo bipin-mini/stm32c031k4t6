@@ -6,8 +6,8 @@
 /// ---------------------------------------------------------------------
 mod bsp;
 mod encoder;
-mod usart1;
 mod modbus;
+mod usart1;
 
 use panic_halt as _;
 
@@ -80,9 +80,7 @@ mod app {
 
         (
             Shared {},
-            Local {
-                usart1: usart1_dev,
-            },
+            Local { usart1: usart1_dev },
             init::Monotonics(mono),
         )
     }

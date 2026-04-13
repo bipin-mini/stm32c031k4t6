@@ -1,5 +1,5 @@
-use stm32c0::stm32c031 as pac;
 use core::cell::UnsafeCell;
+use stm32c0::stm32c031 as pac;
 
 /// ---------------------------------------------------------------------------
 /// USART1 Driver (Interrupt-driven RX, Polling TX)

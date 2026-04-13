@@ -108,45 +108,64 @@ pub fn init_gpioa(gpioa: &pac::GPIOA) {
 /// - PA1 → EXTI1 (ENC_B)
 /// - PA2 → EXTI2 (ENC_Z)
 ///
+/// Note:
+/// EXTI3 is also mapped to PA3 via EXTICR1 reset state, but is not used.
+///
 /// ---------------------------------------------------------------------------
 /// 🧠 Design Rationale
 /// ---------------------------------------------------------------------------
 ///
-/// - BOTH edges enabled → required for X4 quadrature decoding
-/// - No filtering at EXTI level → ISR handles validity via LUT
-/// - All lines enabled → shared IRQ handler processes them uniformly
+/// - Both-edge triggering is enabled for X4 quadrature decoding
+/// - No hardware filtering is used; signal validation is handled in ISR
+///   using software (e.g., LUT/state machine)
+/// - EXTI lines are shared and handled in a unified interrupt handler
 ///
 /// ---------------------------------------------------------------------------
-/// ⚠️ STM32C0 Specific Behavior
+/// ⚠️ STM32C0 Specific Behavior (STM32C031)
 /// ---------------------------------------------------------------------------
 ///
-/// - Rising edges set RPR1
-/// - Falling edges set FPR1
-/// - BOTH must be cleared in ISR or during init
+/// - Rising edges set RPR1 pending bits
+/// - Falling edges set FPR1 pending bits
+/// - Both rising and falling pending flags must be cleared in software
+///   during initialization and/or in the ISR
+///
+/// - EXTI routing is configured via EXTICR1 (default reset state maps
+///   all used lines to GPIOA in this configuration)
 ///
 pub fn init_exti(exti: &pac::EXTI) {
-    // RISING EDGE CONFIGURATION
+    // PA0–PA3 mapping (reset default: all to GPIOA)
+    exti.exticr1().write(|w| unsafe { w.bits(0x0000) });
+
+    // -----------------------------------------------------------------------
+    // Rising edge configuration (trigger on rising transitions)
+    // -----------------------------------------------------------------------
     exti.rtsr1().modify(|_, w| {
         w.rt0().set_bit();
         w.rt1().set_bit();
         w.rt2().set_bit()
     });
 
-    // FALLING EDGE CONFIGURATION
+    // -----------------------------------------------------------------------
+    // Falling edge configuration (trigger on falling transitions)
+    // -----------------------------------------------------------------------
     exti.ftsr1().modify(|_, w| {
         w.ft0().set_bit();
         w.ft1().set_bit();
         w.ft2().set_bit()
     });
 
-    // CLEAR PENDING FLAGS (RISING)
+    // -----------------------------------------------------------------------
+    // Clear pending flags (rising edge events)
+    // -----------------------------------------------------------------------
     exti.rpr1().write(|w| {
         w.rpif0().set_bit();
         w.rpif1().set_bit();
         w.rpif2().set_bit()
     });
 
-    // CLEAR PENDING FLAGS (FALLING)
+    // -----------------------------------------------------------------------
+    // Clear pending flags (falling edge events)
+    // -----------------------------------------------------------------------
     exti.fpr1().write(|w| {
         w.fpif0().set_bit();
         w.fpif1().set_bit();
@@ -156,12 +175,28 @@ pub fn init_exti(exti: &pac::EXTI) {
     cortex_m::asm::dsb();
     cortex_m::asm::isb();
 
-    // INTERRUPT MASK (ENABLE)
+    // -----------------------------------------------------------------------
+    // Interrupt mask enable
     //
-    // NOTE:
-    // STM32C0 PAC exposes IMR1 as raw bitfield register.
-    // Therefore we must use raw bits(), not field accessors.
-    exti.imr1().write(|w| unsafe { w.bits(0b111) });
+    // Enables EXTI lines:
+    // - EXTI0 (PA0)
+    // - EXTI1 (PA1)
+    // - EXTI2 (PA2)
+    // -----------------------------------------------------------------------
+    exti.imr1()
+        .modify(|r, w| unsafe { w.bits(r.bits() | 0b111) });
+
+    // -----------------------------------------------------------------------
+    // NVIC enable
+    //
+    // Enables interrupt groups:
+    // - EXTI0_1 → handles EXTI0 and EXTI1
+    // - EXTI2_3 → handles EXTI2 and EXTI3
+    // -----------------------------------------------------------------------
+    unsafe {
+        cortex_m::peripheral::NVIC::unmask(pac::Interrupt::EXTI0_1);
+        cortex_m::peripheral::NVIC::unmask(pac::Interrupt::EXTI2_3);
+    }
 }
 
 /// ---------------------------------------------------------------------------
@@ -247,8 +282,8 @@ pub fn init_usart1_pins(gpioa: &pac::GPIOA) {
     // Set PA9 and PA10 to Alternate Function mode
     //
     gpioa.moder().modify(|_, w| {
-        w.mode9().alternate();   // PA9  → AF (USART1_TX)
-        w.mode10().alternate()   // PA10 → AF (USART1_RX)
+        w.mode9().alternate(); // PA9  → AF (USART1_TX)
+        w.mode10().alternate() // PA10 → AF (USART1_RX)
     });
 
     // -----------------------------------------------------------------------
@@ -261,7 +296,7 @@ pub fn init_usart1_pins(gpioa: &pac::GPIOA) {
     //
     gpioa.afrh().modify(|_, w| unsafe {
         w.afr(1).bits(1); // PA9  → AF1 (USART1_TX)
-        w.afr(2).bits(1)  // PA10 → AF1 (USART1_RX)
+        w.afr(2).bits(1) // PA10 → AF1 (USART1_RX)
     });
 
     // -----------------------------------------------------------------------
@@ -290,11 +325,10 @@ pub fn init_usart1_pins(gpioa: &pac::GPIOA) {
     // - Use pull-up for idle-high UART line
     //
     gpioa.pupdr().modify(|_, w| {
-        w.pupd9().floating();   // PA9
-        w.pupd10().floating()   // PA10
+        w.pupd9().floating(); // PA9
+        w.pupd10().floating() // PA10
     });
 }
-
 
 // ---------------------------------------------------------------------------
 // RS485 DE/RE PIN INITIALIZATION (PA3)
