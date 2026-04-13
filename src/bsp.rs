@@ -186,3 +186,141 @@ pub fn init_clocks(rcc: &pac::RCC) {
 
     cortex_m::asm::dsb();
 }
+
+/// ---------------------------------------------------------------------------
+/// USART1 GPIO Pin Initialization
+/// ---------------------------------------------------------------------------
+///
+/// Configures GPIOA pins for USART1 peripheral:
+///
+/// - PA9  → USART1_TX (AF1)
+/// - PA10 → USART1_RX (AF1)
+///
+/// ---------------------------------------------------------------------------
+/// 🧠 Design Rationale
+/// ---------------------------------------------------------------------------
+///
+/// - Alternate Function mode is required to connect GPIO to USART peripheral
+/// - AF1 is the correct mapping for USART1 on STM32C031
+/// - TX pin is configured as high-speed to ensure clean signal edges
+/// - RX pin remains floating (external driver must define level)
+///
+/// ---------------------------------------------------------------------------
+/// ⚠️ STM32C0 PAC (v0.16.0) Specific Behavior
+/// ---------------------------------------------------------------------------
+///
+/// - AFRH register uses indexed access: `afr(n)`
+/// - No field helpers like `afrh9()` exist
+/// - Writing AF requires raw `bits()` → requires `unsafe`
+///
+/// AFRH layout (4 bits per pin):
+///
+/// | Pin  | AFR Index | Bit Range |
+/// |------|----------|-----------|
+/// | PA8  | afr(0)   | [3:0]     |
+/// | PA9  | afr(1)   | [7:4]     |
+/// | PA10 | afr(2)   | [11:8]    |
+///
+/// ---------------------------------------------------------------------------
+/// ⚠️ Safety
+/// ---------------------------------------------------------------------------
+///
+/// - `bits()` is unsafe because it bypasses type-level validation
+/// - Safe here because:
+///   - AF1 is valid for USART1
+///   - Bit positions are hardware-defined and fixed
+///
+/// ---------------------------------------------------------------------------
+/// ⚙️ Electrical Assumptions
+/// ---------------------------------------------------------------------------
+///
+/// - TX (PA9) → push-pull output from MCU
+/// - RX (PA10) → driven by external device (RS485 transceiver, etc.)
+/// - If RX line is open/floating externally, pull-up/down must be added
+///
+/// ---------------------------------------------------------------------------
+pub fn init_usart1_pins(gpioa: &pac::GPIOA) {
+    // -----------------------------------------------------------------------
+    // MODE CONFIGURATION
+    // -----------------------------------------------------------------------
+    //
+    // Set PA9 and PA10 to Alternate Function mode
+    //
+    gpioa.moder().modify(|_, w| {
+        w.mode9().alternate();   // PA9  → AF (USART1_TX)
+        w.mode10().alternate()   // PA10 → AF (USART1_RX)
+    });
+
+    // -----------------------------------------------------------------------
+    // ALTERNATE FUNCTION SELECTION (AF1 = USART1)
+    // -----------------------------------------------------------------------
+    //
+    // Using indexed AFRH access:
+    // - afr(1) → PA9
+    // - afr(2) → PA10
+    //
+    gpioa.afrh().modify(|_, w| unsafe {
+        w.afr(1).bits(1); // PA9  → AF1 (USART1_TX)
+        w.afr(2).bits(1)  // PA10 → AF1 (USART1_RX)
+    });
+
+    // -----------------------------------------------------------------------
+    // OUTPUT SPEED CONFIGURATION
+    // -----------------------------------------------------------------------
+    //
+    // High speed on TX ensures:
+    // - Faster edge transitions
+    // - Better signal integrity for UART waveform
+    //
+    // RX speed setting is irrelevant (input pin)
+    //
+    gpioa.ospeedr().modify(|_, w| {
+        w.ospeed9().high_speed() // PA9 (TX)
+    });
+
+    // -----------------------------------------------------------------------
+    // PULL-UP / PULL-DOWN CONFIGURATION
+    // -----------------------------------------------------------------------
+    //
+    // Leave both pins floating:
+    // - TX is actively driven by MCU
+    // - RX is expected to be driven externally
+    //
+    // If required:
+    // - Use pull-up for idle-high UART line
+    //
+    gpioa.pupdr().modify(|_, w| {
+        w.pupd9().floating();   // PA9
+        w.pupd10().floating()   // PA10
+    });
+}
+
+
+// ---------------------------------------------------------------------------
+// RS485 DE/RE PIN INITIALIZATION (PA3)
+// ---------------------------------------------------------------------------
+//
+// Configures:
+// - PA3 as push-pull output
+// - Default state = LOW (RX mode)
+//
+// Design:
+// - HIGH → TX enable
+// - LOW  → RX enable
+//
+pub fn init_rs485_de(gpioa: &pac::GPIOA) {
+    // Set PA3 as output
+    gpioa.moder().modify(|_, w| w.mode3().output());
+
+    // Push-pull
+    gpioa.otyper().modify(|_, w| w.ot3().clear_bit());
+
+    // Low speed (sufficient)
+    gpioa.ospeedr().modify(|_, w| w.ospeed3().low_speed());
+
+    // No pull-up/down
+    gpioa.pupdr().modify(|_, w| w.pupd3().floating());
+
+    // Default: RX mode (DE LOW)
+    gpioa.bsrr().write(|w| w.br3().set_bit());
+}
