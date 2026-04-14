@@ -20,7 +20,7 @@ use stm32c0::stm32c031 as pac;
 ///
 /// - TX path:
 ///     • Polling-based (blocking, deterministic)
-///     • Used for short frames (Modbus RTU)
+///     • Used for short frames (e.g., Modbus RTU)
 ///
 /// - RS485:
 ///     • DE pin controlled in software (PA3)
@@ -36,7 +36,7 @@ use stm32c0::stm32c031 as pac;
 /// - Zero-copy RX path
 /// - Strict separation:
 ///     • Driver → transport only
-///     • Modbus → protocol layer
+///     • Higher layer → protocol handling
 ///
 /// ---------------------------------------------------------------------------
 /// ⚠️ Concurrency Model (SPSC - Single Producer / Single Consumer)
@@ -61,8 +61,8 @@ use stm32c0::stm32c031 as pac;
 /// Uses `UnsafeCell` to enable interior mutability of a static buffer.
 ///
 /// Justification:
-/// - `static mut` is avoided (Rust 2024 compliance)
-/// - Access is strictly partitioned:
+/// - `static mut` avoided (Rust 2024 compliance)
+/// - Access partitioned:
 ///     • ISR → write only
 ///     • Task → read only
 ///
@@ -70,7 +70,7 @@ use stm32c0::stm32c031 as pac;
 /// - No aliasing of mutable references
 /// - No concurrent access to same field
 ///
-/// This pattern is standard for lock-free embedded SPSC buffers.
+/// Standard pattern for lock-free embedded SPSC buffers.
 /// ---------------------------------------------------------------------------
 
 const RX_BUF_SIZE: usize = 256; // Must be power-of-two
@@ -80,12 +80,11 @@ const RX_BUF_SIZE: usize = 256; // Must be power-of-two
 // ---------------------------------------------------------------------------
 struct RingBuffer {
     buf: [u8; RX_BUF_SIZE],
-    head: usize, // write index (ISR only)
-    tail: usize, // read index (task only)
+    head: usize, // ISR only
+    tail: usize, // task only
 }
 
 impl RingBuffer {
-    // Create empty buffer
     const fn new() -> Self {
         Self {
             buf: [0; RX_BUF_SIZE],
@@ -94,15 +93,6 @@ impl RingBuffer {
         }
     }
 
-    // Push byte (ISR context)
-    //
-    // Properties:
-    // - Constant time
-    // - No branching except overflow check
-    // - No blocking
-    //
-    // Behavior:
-    // - On overflow → byte is dropped (per HLD requirement)
     #[inline(always)]
     fn push(&mut self, byte: u8) {
         let next = (self.head + 1) & (RX_BUF_SIZE - 1);
@@ -111,14 +101,9 @@ impl RingBuffer {
             self.buf[self.head] = byte;
             self.head = next;
         }
-        // Overflow condition intentionally ignored
+        // overflow → drop byte
     }
 
-    // Pop byte (task context)
-    //
-    // Returns:
-    // - Some(byte) → data available
-    // - None       → buffer empty
     #[inline(always)]
     fn pop(&mut self) -> Option<u8> {
         if self.head == self.tail {
@@ -132,16 +117,8 @@ impl RingBuffer {
 }
 
 // ---------------------------------------------------------------------------
-// Global RX Buffer Wrapper
+// Global RX Buffer
 // ---------------------------------------------------------------------------
-//
-// Encapsulates UnsafeCell to provide controlled interior mutability.
-//
-// SAFETY INVARIANTS:
-// - Only ISR writes (push)
-// - Only task reads (pop)
-// - No concurrent mutation of same index
-//
 struct RxBuf(UnsafeCell<RingBuffer>);
 
 unsafe impl Sync for RxBuf {}
@@ -152,60 +129,47 @@ static RX_BUF: RxBuf = RxBuf(UnsafeCell::new(RingBuffer::new()));
 // USART1 Initialization
 // ---------------------------------------------------------------------------
 //
-// Configures:
-// - 9600 baud
-// - 8 data bits, no parity, 1 stop bit (8N1)
+// Configuration:
+// - Baud rate: 9600
+// - Frame: 8 data bits, no parity, 1 stop bit (8N1)
 // - RX interrupt enabled
 //
 // Assumptions:
-// - GPIO already configured via BSP
-// - System clock = 16 MHz
+// - System clock = 48 MHz (HSI48 / 1 via BSP)
+// - Oversampling = 16 (default)
 //
-// NOTE:
-// If system clock changes, BRR must be recalculated.
+// Baud calculation:
+//     BRR = fCK / baud = 48_000_000 / 9600 = 5000
 //
 pub fn init(usart1: &pac::USART1, rcc: &pac::RCC) {
-    // Enable USART1 peripheral clock
+    // Enable USART1 clock
     rcc.apbenr2().modify(|_, w| w.usart1en().set_bit());
 
-    // Disable USART before configuration
+    // Disable USART before config
     usart1.cr1().modify(|_, w| w.ue().clear_bit());
 
-    // Configure baud rate (16 MHz / 9600 ≈ 1667)
-    usart1.brr().write(|w| unsafe { w.bits(1667) });
+    // Set baud rate for 48 MHz clock
+    usart1.brr().write(|w| unsafe { w.bits(5000) });
 
-    // Enable RX, TX and RX interrupt
+    // Enable RX, TX, RX interrupt
     usart1.cr1().modify(|_, w| {
         w.re().set_bit();
         w.te().set_bit();
         w.rxneie().set_bit()
     });
 
-    // Enable USART peripheral
+    // Enable USART
     usart1.cr1().modify(|_, w| w.ue().set_bit());
 }
 
 // ---------------------------------------------------------------------------
 // USART1 Interrupt Handler
 // ---------------------------------------------------------------------------
-//
-// Responsibilities:
-// - Read received byte (RXFNE)
-// - Handle overrun error (ORE)
-//
-// Constraints:
-// - Constant execution time
-// - No loops
-// - No blocking
-//
-// Must be called from RTIC:
-// #[task(binds = USART1)]
-//
 #[inline(always)]
 pub fn isr(usart1: &pac::USART1) {
     let isr = usart1.isr().read();
 
-    // RXFNE: data available in RDR
+    // RXFNE → byte available
     if isr.rxfne().bit_is_set() {
         let byte = usart1.rdr().read().bits() as u8;
 
@@ -214,10 +178,7 @@ pub fn isr(usart1: &pac::USART1) {
         }
     }
 
-    // ORE: overrun error
-    //
-    // Occurs if RDR not read in time.
-    // Cleared by reading RDR.
+    // ORE → overrun
     if isr.ore().bit_is_set() {
         let _ = usart1.rdr().read().bits();
     }
@@ -226,13 +187,6 @@ pub fn isr(usart1: &pac::USART1) {
 // ---------------------------------------------------------------------------
 // Non-blocking Read
 // ---------------------------------------------------------------------------
-//
-// Called from task context only.
-//
-// Returns:
-// - Some(byte) → data available
-// - None       → buffer empty
-//
 #[inline(always)]
 pub fn read() -> Option<u8> {
     unsafe { (*RX_BUF.0.get()).pop() }
@@ -241,11 +195,6 @@ pub fn read() -> Option<u8> {
 // ---------------------------------------------------------------------------
 // Blocking Write (Single Byte)
 // ---------------------------------------------------------------------------
-//
-// Waits until TX register is ready, then writes byte.
-//
-// Deterministic and bounded.
-//
 #[inline(always)]
 pub fn write(usart1: &pac::USART1, byte: u8) {
     while usart1.isr().read().txfe().bit_is_clear() {}
@@ -256,45 +205,26 @@ pub fn write(usart1: &pac::USART1, byte: u8) {
 // ---------------------------------------------------------------------------
 // Blocking Write (Buffer)
 // ---------------------------------------------------------------------------
-//
-// Sequence:
-// 1. Enable RS485 transmitter (DE HIGH)
-// 2. Transmit all bytes
-// 3. Wait for TC (last bit shifted out)
-// 4. Disable transmitter (DE LOW)
-//
-// TC ensures:
-// - Shift register empty
-// - Line idle → safe to release bus
-//
 pub fn write_buf(usart1: &pac::USART1, buf: &[u8]) {
-    // Enter TX mode (RS485)
     tx_start();
 
-    // Small guard delay (driver enable time)
+    // DE setup delay (very small, depends on transceiver)
     cortex_m::asm::nop();
     cortex_m::asm::nop();
 
-    // Send bytes
     for &b in buf {
         write(usart1, b);
     }
 
-    // Wait until transmission fully complete
+    // Wait for full transmission (shift register empty)
     while usart1.isr().read().tc().bit_is_clear() {}
 
-    // Return to RX mode
     tx_end();
 }
 
 // ---------------------------------------------------------------------------
-// RS485 DE CONTROL (PA3)
+// RS485 DE Control (PA3)
 // ---------------------------------------------------------------------------
-//
-// Direct register access used for:
-// - Minimal latency
-// - Deterministic timing
-//
 #[inline(always)]
 fn de_high() {
     let gpioa = unsafe { &*pac::GPIOA::ptr() };
@@ -308,19 +238,8 @@ fn de_low() {
 }
 
 // ---------------------------------------------------------------------------
-// RS485 Direction Control API
+// RS485 Direction API
 // ---------------------------------------------------------------------------
-//
-// tx_start():
-// - Enables transmitter (DE HIGH)
-//
-// tx_end():
-// - Returns to receive mode (DE LOW)
-//
-// Timing:
-// - Must assert before first byte
-// - Must release after TC
-//
 #[inline(always)]
 pub fn tx_start() {
     de_high();

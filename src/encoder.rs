@@ -30,8 +30,8 @@ use stm32c0::stm32c031::{EXTI, GPIOA};
 /// - constant-time decoding
 /// - deterministic execution on Cortex-M0+
 ///
-#[link_section = ".data"]
-static LUT: [i8; 16] = [0, 1, -1, 0, -1, 0, 0, 1, 1, 0, 0, -1, 0, -1, 1, 0];
+
+const LUT: [i8; 16] = [0, 1, -1, 0, -1, 0, 0, 1, 1, 0, 0, -1, 0, -1, 1, 0];
 
 /// ---------------------------------------------------------------------------
 /// 🔒 ISR STATE
