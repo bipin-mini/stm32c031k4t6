@@ -128,7 +128,7 @@ pub fn init_gpioa(gpioa: &pac::GPIOA) {
         w.ot3().clear_bit(); // RS485 DE
         w.ot4().clear_bit(); // STB
         w.ot5().clear_bit(); // CLK
-        w.ot7().clear_bit()  // DIO
+        w.ot7().clear_bit() // DIO
     });
 
     // ---------------- PULL CONFIG ----------------

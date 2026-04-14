@@ -14,9 +14,11 @@
 ///
 mod bsp;
 mod encoder;
+mod flash;
 mod modbus;
-mod usart1;
+mod relay;
 mod tm1638;
+mod usart1;
 
 use panic_halt as _;
 
@@ -87,6 +89,7 @@ mod app {
         let dp = ctx.device;
 
         let gpioa = dp.GPIOA;
+        let gpiob = dp.GPIOB;
         let exti = dp.EXTI;
         let rcc = dp.RCC;
         let usart1_dev = dp.USART1;
@@ -117,7 +120,7 @@ mod app {
         // -------------------------------------------------------------
         encoder::init();
         usart1::init(&usart1_dev, &rcc);
-
+        relay::init(&gpiob);
         // -------------------------------------------------------------
         // MONOTONIC TIMER
         // -------------------------------------------------------------
