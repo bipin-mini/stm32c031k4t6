@@ -13,12 +13,15 @@
 /// - usart1   → transport layer (interrupt RX, polling TX)
 ///
 mod bsp;
-mod encoder;
-mod flash;
 mod modbus;
-mod relay;
-mod tm1638;
-mod usart1;
+
+mod drivers {
+    pub mod encoder;
+    pub mod flash;
+    pub mod relay;
+    pub mod tm1638;
+    pub mod uart;
+}
 
 use panic_halt as _;
 
@@ -70,7 +73,7 @@ mod app {
     //
     #[local]
     struct Local {
-        usart1: pac::USART1,
+        uart: pac::USART1,
     }
 
     // -----------------------------------------------------------------
@@ -118,9 +121,11 @@ mod app {
         // -------------------------------------------------------------
         // SUBSYSTEM INITIALIZATION
         // -------------------------------------------------------------
-        encoder::init();
-        usart1::init(&usart1_dev, &rcc);
-        relay::init(&gpiob);
+        drivers::encoder::init();
+        drivers::uart::init(&usart1_dev, &rcc);
+        drivers::relay::init(&gpiob);
+        drivers::tm1638::init();
+        drivers::relay::off(&gpiob);
         // -------------------------------------------------------------
         // MONOTONIC TIMER
         // -------------------------------------------------------------
@@ -138,13 +143,12 @@ mod app {
         // TODO:
         // Replace with deterministic 1 kHz control loop
         //
-        blink::spawn().ok();
 
         (
             Shared {
                 power_fail_flag: false,
             },
-            Local { usart1: usart1_dev },
+            Local { uart: usart1_dev },
             init::Monotonics(mono),
         )
     }
@@ -164,7 +168,7 @@ mod app {
     //
     #[task(binds = EXTI0_1, priority = 2)]
     fn exti0_1(_ctx: exti0_1::Context) {
-        encoder::isr();
+        drivers::encoder::isr();
     }
 
     // -----------------------------------------------------------------
@@ -208,9 +212,9 @@ mod app {
     // - No blocking
     // - No shared resource access
     //
-    #[task(binds = USART1, priority = 1, local = [usart1])]
+    #[task(binds = USART1, priority = 1, local = [uart])]
     fn usart1_irq(ctx: usart1_irq::Context) {
-        usart1::isr(ctx.local.usart1);
+        drivers::uart::isr(ctx.local.uart);
     }
 
     // -----------------------------------------------------------------
@@ -232,13 +236,32 @@ mod app {
     // STATUS:
     // - Placeholder only (TBD)
     //
-    #[task]
-    fn blink(_ctx: blink::Context) {
-        while let Some(_b) = usart1::read() {
-            // future: modbus::process_byte(_b);
-        }
+    #[idle]
+    fn idle(_ctx: idle::Context) -> ! {
+        loop {
+            // ---------------------------------------------------------
+            // LOW PRIORITY SYSTEM PROCESSING
+            // ---------------------------------------------------------
+            //
+            // UART drain → feeds Modbus parser
+            // This replaces blink() polling logic
+            //
+            while let Some(_b) = drivers::uart::read() {
+                // future: modbus::process_byte(b);
+            }
 
-        blink::spawn_after(500.millis()).ok();
+            // ---------------------------------------------------------
+            // POWER FAIL CHECK (deferred handling)
+            // ---------------------------------------------------------
+            //
+            // Safe point to act on power fail flag
+            //
+            // if ctx.shared.power_fail_flag ...
+            // (RTIC lock required if implemented here)
+            //
+
+            cortex_m::asm::wfi(); // sleep until interrupt
+        }
     }
 
     // -----------------------------------------------------------------

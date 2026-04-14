@@ -3,7 +3,7 @@
 use core::cell::UnsafeCell;
 use stm32c0::stm32c031 as pac;
 
-use crate::usart1;
+use crate::drivers::uart;
 
 /// ---------------------------------------------------------------------------
 /// Minimal Modbus RTU (Spec-Compliant Frame Handling)
@@ -96,7 +96,7 @@ fn crc16(data: &[u8]) -> u16 {
 pub fn rx_pump() {
     let mb = unsafe { &mut *MB.0.get() };
 
-    while let Some(b) = usart1::read() {
+    while let Some(b) = uart::read() {
         mb.push(b);
 
         // IMPORTANT:
@@ -189,7 +189,7 @@ fn handle_read(usart1: &pac::USART1, frame: &[u8]) {
     resp[len] = crc as u8;
     resp[len + 1] = (crc >> 8) as u8;
 
-    usart1::write_buf(usart1, &resp[..len + 2]);
+    uart::write_buf(usart1, &resp[..len + 2]);
 }
 
 /// ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ fn handle_write_single(usart1: &pac::USART1, frame: &[u8]) {
             (*HOLDING_REGS.0.get())[addr] = value;
         }
 
-        usart1::write_buf(usart1, &frame[..8]);
+        uart::write_buf(usart1, &frame[..8]);
     }
 }
 
@@ -242,5 +242,5 @@ fn handle_write_multi(usart1: &pac::USART1, frame: &[u8]) {
     resp[6] = crc as u8;
     resp[7] = (crc >> 8) as u8;
 
-    usart1::write_buf(usart1, &resp);
+    uart::write_buf(usart1, &resp);
 }
