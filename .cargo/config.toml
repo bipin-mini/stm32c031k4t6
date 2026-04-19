@@ -1,5 +1,5 @@
 [target.thumbv6m-none-eabi]
-runner = "probe-rs run --chip STM32C031K6Tx"
+runner = "probe-rs run --chip STM32C031K6 --protocol swd"
 
 rustflags = [
   "-C", "link-arg=-Tlink.x",

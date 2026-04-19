@@ -16,17 +16,22 @@ systick-monotonic = "1.0.1"
 
 
 [profile.dev]
-codegen-units = 1
+opt-level = "z"
 debug = true
-incremental = false
 lto = false
-opt-level = 2
+codegen-units = 1
+incremental = false
+
 
 [profile.release]
-debug = false
+opt-level = "s"          # better timing than "z"
+lto = "fat"             # full optimization
 codegen-units = 1
 incremental = false
-lto = true
-opt-level = "z"
+
 panic = "abort"
+overflow-checks = false
+debug-assertions = false
+
+debug = false           # set true only during bring-up
 strip = true
