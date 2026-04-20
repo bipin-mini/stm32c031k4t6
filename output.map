@@ -1,0 +1,254 @@
+     VMA      LMA     Size Align Out     In      Symbol
+       0        0        0     1 PROVIDE(NonMaskableInt = DefaultHandler)
+       0        0        0     1 PROVIDE(SVCall = DefaultHandler)
+       0        0        0     1 PROVIDE(PendSV = DefaultHandler)
+       0        0        0     1 PROVIDE(DefaultHandler = DefaultHandler_)
+       0        0        0     1 PROVIDE(HardFault = HardFault_)
+       0        0        0     1 PROVIDE(_ram_end = ORIGIN(RAM) + LENGTH(RAM))
+       0        0        0     1 PROVIDE(_stack_start = _ram_end)
+ 8000000  8000000       b4     4 .vector_table
+ 8000000  8000000        0     1         __vector_table = .
+ 8000000  8000000        4     1         LONG(_stack_start & 0xFFFFFFF8)
+ 8000004  8000004        4     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.vector_table.reset_vector)
+ 8000004  8000004        4     1                 __RESET_VECTOR
+ 8000008  8000008        0     1         __exceptions = .
+ 8000008  8000008       38     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.vector_table.exceptions)
+ 8000008  8000008       38     1                 __EXCEPTIONS
+ 8000040  8000040        0     1         __eexceptions = .
+ 8000040  8000040       74     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.vector_table.interrupts)
+ 8000040  8000040       74     1                 __INTERRUPTS
+ 80000b4  80000b4        0     1 PROVIDE(_stext = ADDR(.vector_table) + SIZEOF(.vector_table))
+ 80000b4  80000b4      8e0     4 .text
+ 80000b4  80000b4        0     1         __stext = .
+ 80000b4  80000b4       3c     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.Reset)
+ 80000b4  80000b4        0     1                 $t
+ 80000b5  80000b5       28     1                 Reset
+ 80000dc  80000dc        0     1                 $d
+ 80000f0  80000f0       40     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.EXTI0_1)
+ 80000f0  80000f0        0     1                 $t
+ 80000f1  80000f1       40     1                 EXTI0_1
+ 800011c  800011c        0     1                 $d
+ 8000130  8000130       14     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.EXTI2_3)
+ 8000130  8000130        0     1                 $t
+ 8000131  8000131       14     1                 EXTI2_3
+ 8000140  8000140        0     1                 $d
+ 8000144  8000144       20     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.EXTI4_15)
+ 8000144  8000144        0     1                 $t
+ 8000145  8000145       20     1                 EXTI4_15
+ 800015c  800015c        0     1                 $d
+ 8000164  8000164       58     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.SysTick)
+ 8000164  8000164        0     1                 $t
+ 8000165  8000165       58     1                 SysTick
+ 80001b0  80001b0        0     1                 $d
+ 80001bc  80001bc       48     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.USART1)
+ 80001bc  80001bc        0     1                 $t
+ 80001bd  80001bd       48     1                 USART1
+ 80001fc  80001fc        0     1                 $d
+ 8000204  8000204       a0     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text._ZN5dro083app4idle17h3868091c603f344aE)
+ 8000204  8000204        0     1                 $t
+ 8000205  8000205       a0     1                 dro08::app::idle::h3868091c603f344a
+ 8000290  8000290        0     1                 $d
+ 80002a4  80002a4      300     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text._ZN5dro083app8rtic_ext4main21__rtic_init_resources17hfb91950dc77d6de6E)
+ 80002a4  80002a4        0     1                 $t
+ 80002a5  80002a5      300     1                 dro08::app::rtic_ext::main::__rtic_init_resources::hfb91950dc77d6de6
+ 800054c  800054c        0     1                 $d
+ 80005a4  80005a4        a     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text._ZN8cortex_m9interrupt7disable17hf3e4c0270614fd2cE)
+ 80005a4  80005a4        0     1                 $t
+ 80005a5  80005a5        a     1                 cortex_m::interrupt::disable::hf3e4c0270614fd2c
+ 80005b0  80005b0       2c     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.__pre_init)
+ 80005b0  80005b0        0     1                 $t
+ 80005b1  80005b1       2c     1                 __pre_init
+ 80005d0  80005d0        0     1                 $d
+ 80005dc  80005dc       88     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.main)
+ 80005dc  80005dc        0     1                 $t
+ 80005dd  80005dd       88     1                 main
+ 8000650  8000650        0     1                 $d
+ 8000664  8000664        8     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.unlikely._ZN4core9panicking9panic_fmt17h543584a21fff78e6E)
+ 8000664  8000664        0     1                 $t
+ 8000665  8000665        8     1                 core::panicking::panic_fmt::h543584a21fff78e6
+ 800066c  800066c        8     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.unlikely._ZN4core9panicking18panic_bounds_check17h95a79224c4b59fc7E)
+ 800066c  800066c        0     1                 $t
+ 800066d  800066d        8     1                 core::panicking::panic_bounds_check::h95a79224c4b59fc7
+ 8000674  8000674        8     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.unlikely._ZN4core6result13unwrap_failed17h59f72d76c68732dbE)
+ 8000674  8000674        0     1                 $t
+ 8000675  8000675        8     1                 core::result::unwrap_failed::h59f72d76c68732db
+ 800067c  800067c        6     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text.DefaultHandler_)
+ 800067c  800067c        0     1                 $t
+ 800067d  800067d        6     1                 DefaultHandler_
+ 8000682  8000682        6     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.text._RNvCs1Y7DaGC1cwg_7___rustc17rust_begin_unwind)
+ 8000682  8000682        0     1                 $t
+ 8000683  8000683        6     1                 __rustc::rust_begin_unwind
+ 8000688  8000688        4     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.text.__cpsid)
+ 8000688  8000688        0     1                 $t.3
+ 8000689  8000689        4     1                 __cpsid
+ 800068c  800068c        4     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.text.__cpsie)
+ 800068c  800068c        0     1                 $t.4
+ 800068d  800068d        4     1                 __cpsie
+ 8000690  8000690        6     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.text.__dsb)
+ 8000690  8000690        0     1                 $t.7
+ 8000691  8000691        6     1                 __dsb
+ 8000696  8000696        6     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.text.__isb)
+ 8000696  8000696        0     1                 $t.8
+ 8000697  8000697        6     1                 __isb
+ 800069c  800069c        4     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.text.__nop)
+ 800069c  800069c        0     1                 $t.11
+ 800069d  800069d        4     1                 __nop
+ 80006a0  80006a0        6     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.text.__primask_r)
+ 80006a0  80006a0        0     1                 $t.12
+ 80006a1  80006a1        6     1                 __primask_r
+ 80006a6  80006a6        4     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.text.__wfi)
+ 80006a6  80006a6        0     1                 $t.18
+ 80006a7  80006a7        4     1                 __wfi
+ 80006aa  80006aa       76     2         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.263.rcgu.o):(.text.__aeabi_memcpy4)
+ 80006aa  80006aa        0     1                 $t
+ 80006ab  80006ab       76     1                 __aeabi_memcpy4
+ 8000720  8000720      252     2         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.012.rcgu.o):(.text._ZN17compiler_builtins3mem6memcpy17h09024d712e1842bbE)
+ 8000720  8000720        0     1                 $t
+ 8000721  8000721      252     1                 compiler_builtins::mem::memcpy::h09024d712e1842bb
+ 8000974  8000974       18     4         <internal>:(.text.thunk)
+ 800098c  800098c        6     2         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.HardFault.default)
+ 800098c  800098c        0     1                 $t
+ 800098d  800098d        6     1                 HardFault_
+ 8000992  8000992        2     1         . = ALIGN(4)
+ 8000994  8000994        0     1         __etext = .
+ 8000994  8000994       1c     4 .rodata
+ 8000994  8000994        0     1         . = ALIGN(4)
+ 8000994  8000994        0     1         __srodata = .
+ 8000994  8000994        c     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.rodata..Lanon.6726aaf649d54aea1444f5959fddb1fc.2)
+ 80009a0  80009a0       10     1         <internal>:(.rodata.cst16)
+ 80009b0  80009b0        0     1         . = ALIGN(4)
+ 80009b0  80009b0        0     1         __erodata = .
+20000000 20000000        0     4 .data
+20000000 20000000        0     1         . = ALIGN(4)
+20000000 20000000        0     1         __sdata = .
+20000000 20000000        0     1         . = ALIGN(4)
+20000000 20000000        0     1 . = ALIGN(4)
+20000000 20000000        0     1 __edata = .
+20000000 20000000        0     1 __sidata = LOADADDR(.data)
+ 80009c0  80009c0        0    32 .gnu.sgstubs
+ 80009c0  80009c0        0     1         . = ALIGN(32)
+ 80009c0  80009c0        0     1         __veneer_base = .
+ 80009c0  80009c0        0     1         . = ALIGN(32)
+ 80009c0  80009c0        0     1 . = ALIGN(32)
+ 80009c0  80009c0        0     1 __veneer_limit = .
+20000000 20000000      124     8 .bss
+20000000 20000000        0     1         . = ALIGN(4)
+20000000 20000000        0     1         __sbss = .
+20000000 20000000        1     8         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.bss._ZN5dro083app41__rtic_internal_MONOTONIC_STORAGE_SysMono17ha1fca89b092276e3E.0)
+20000000 20000000        1     1                 dro08::app::__rtic_internal_MONOTONIC_STORAGE_SysMono::ha1fca89b092276e3 (.0)
+20000008 20000008        8     8         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.bss._ZN5dro083app41__rtic_internal_MONOTONIC_STORAGE_SysMono17ha1fca89b092276e3E.1)
+20000008 20000008        8     1                 dro08::app::__rtic_internal_MONOTONIC_STORAGE_SysMono::ha1fca89b092276e3 (.1)
+20000010 20000010      108     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.bss._ZN5dro087drivers4uart6RX_BUF17h84337237d5534646E)
+20000010 20000010      108     1                 dro08::drivers::uart::RX_BUF::h84337237d5534646
+20000118 20000118        1     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.bss._ZN5dro087drivers7encoder10PREV_STATE17h7fdb843db4913445E.0)
+20000118 20000118        1     1                 dro08::drivers::encoder::PREV_STATE::h7fdb843db4913445 (.0)
+2000011c 2000011c        4     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.bss._ZN5dro087drivers7encoder5COUNT17h4dc76ee4baefc579E.0)
+2000011c 2000011c        4     1                 dro08::drivers::encoder::COUNT::h4dc76ee4baefc579 (.0)
+20000120 20000120        1     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.bss.DEVICE_PERIPHERALS)
+20000120 20000120        1     1                 DEVICE_PERIPHERALS
+20000121 20000121        3     1         . = ALIGN(4)
+20000124 20000124        0     1 . = ALIGN(4)
+20000124 20000124        0     1 __ebss = .
+20000124 20000124        4     4 .uninit
+20000124 20000124        0     1         . = ALIGN(4)
+20000124 20000124        0     1         __suninit = .
+20000124 20000124        1     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.uninit.rtic0)
+20000124 20000124        1     1                 dro08::app::__rtic_internal_shared_resource_power_fail_flag::ha505ce2cdbbbdea6 (.0)
+20000125 20000125        3     1         . = ALIGN(4)
+20000128 20000128        0     1         __euninit = .
+20000128 20000128        0     1 PROVIDE(__sheap = __euninit)
+20000128 20000128        0     1 PROVIDE(_stack_end = __euninit)
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 
+20000128 20000128        0     1 PROVIDE(WWDG = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(PVM = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(RTC = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(FLASH = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(RCC = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(DMA1_CHANNEL1 = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(DMA1_CHANNEL2_3 = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(DMAMUX_DMA1_CHANNEL4_5 = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(ADC = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(TIM1_BRK_UP_TRG_COM = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(TIM1_CC = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(TIM3 = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(TIM14 = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(TIM16 = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(TIM17 = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(I2C = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(SPI = DefaultHandler)
+20000128 20000128        0     1 PROVIDE(USART2 = DefaultHandler)
+20000128 20000128        0     1 
+20000128  80009c0       f4     4 .ramfunc
+20000128  80009c0       f4     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.ramfunc)
+20000128  80009c0        0     1                 $t
+20000129  80009c1       80     1                 dro08::flash::Stm32Flash::erase_page::h14fb87e05a0920cd
+200001a0  8000a38        0     1                 $d
+200001a8  8000a40        0     1                 $t
+200001a9  8000a41       74     1                 dro08::flash::Stm32Flash::write_double_word::h84e08a36308773a1
+20000210  8000aa8        0     1                 $d
+2000021c  8000ab4        0     1 _ramfunc = ADDR(.ramfunc)
+2000021c  8000ab4        0     1 _sramfunc = LOADADDR(.ramfunc)
+2000021c  8000ab4        0     1 _eramfunc = _sramfunc + SIZEOF(.ramfunc)
+       0        0     1f66     1 .debug_loc
+       0        0     1ef9     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.debug_loc)
+    1ef9     1ef9       6d     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_loc)
+       0        0      8cd     1 .debug_abbrev
+       0        0      58b     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.debug_abbrev)
+     58b      58b      17b     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_abbrev)
+     706      706       8c     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.263.rcgu.o):(.debug_abbrev)
+     792      792      13b     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.012.rcgu.o):(.debug_abbrev)
+       0        0    275f5     1 .debug_info
+       0        0    260df     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.debug_info)
+   260df    260df      70d     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_info)
+   267ec    267ec      105     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.263.rcgu.o):(.debug_info)
+   268f1    268f1      d04     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.012.rcgu.o):(.debug_info)
+       0        0      290     1 .debug_aranges
+       0        0      180     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.debug_aranges)
+     180      180       c0     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_aranges)
+     240      240       20     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.263.rcgu.o):(.debug_aranges)
+     260      260       30     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.012.rcgu.o):(.debug_aranges)
+       0        0      938     1 .debug_ranges
+       0        0      390     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.debug_ranges)
+     390      390       b0     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_ranges)
+     440      440       48     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.263.rcgu.o):(.debug_ranges)
+     488      488      4b0     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.012.rcgu.o):(.debug_ranges)
+       0        0    3c778     1 .debug_str
+       0        0    3c778     1         <internal>:(.debug_str)
+       0        0       8b     1 .comment
+       0        0       8b     1         <internal>:(.comment)
+       0        0       30     1 .ARM.attributes
+       0        0       30     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.ARM.attributes)
+       0        0      47c     4 .debug_frame
+       0        0      260     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.debug_frame)
+     260      260      164     4         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_frame)
+     3c4      3c4       38     4         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.263.rcgu.o):(.debug_frame)
+     3fc      3fc       80     4         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.012.rcgu.o):(.debug_frame)
+       0        0     2704     1 .debug_line
+       0        0     1583     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/dro08-54c1a61041d41373.dro08.2e7aa9cad1cb8c7b-cgu.0.rcgu.o:(.debug_line)
+    1583     1583      35e     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_line)
+    18e1     18e1      1d6     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.263.rcgu.o):(.debug_line)
+    1ab7     1ab7      c4d     1         /home/bipin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/thumbv6m-none-eabi/lib/libcompiler_builtins-db44aeb92005c223.rlib(compiler_builtins-db44aeb92005c223.compiler_builtins.a5d5d69e67e180c6-cgu.012.rcgu.o):(.debug_line)
+       0        0      1e9     1 .debug_pubnames
+       0        0      1e9     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_pubnames)
+       0        0       47     1 .debug_pubtypes
+       0        0       47     1         /home/bipin/Desktop/stm32c031k6t6/target/thumbv6m-none-eabi/release/deps/rustcVZlty0/libcortex_m-0efd3f0f1f9fa1bb.rlib(bin/thumbv6m-none-eabi.o):(.debug_pubtypes)
+       0        0      880     4 .symtab
+       0        0      880     4         <internal>:(.symtab)
+       0        0       ff     1 .shstrtab
+       0        0       ff     1         <internal>:(.shstrtab)
+       0        0      818     1 .strtab
+       0        0      818     1         <internal>:(.strtab)

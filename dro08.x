@@ -15,7 +15,8 @@ SECTIONS
     *(.ramfunc*)
   } > RAM AT > FLASH
 
-  /* Symbols for optional manual copy */
-  _sramfunc = LOADADDR(.ramfunc);
+  /* ---------------- REQUIRED SYMBOLS ---------------- */
+  _ramfunc  = ADDR(.ramfunc);        /* RAM destination */
+  _sramfunc = LOADADDR(.ramfunc);    /* FLASH source */
   _eramfunc = _sramfunc + SIZEOF(.ramfunc);
 }

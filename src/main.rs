@@ -1,6 +1,31 @@
 #![no_std]
 #![no_main]
 
+
+use panic_halt as _;
+
+/* ---------------------------------------------------------
+   PRE-INIT HOOK
+--------------------------------------------------------- */
+#[no_mangle]
+pub unsafe extern "C" fn __pre_init() {
+    extern "C" {
+        static mut _sramfunc: u32;
+        static mut _eramfunc: u32;
+        static mut _ramfunc: u32;
+    }
+
+    let mut src = core::ptr::addr_of!(_sramfunc);
+    let mut dst = core::ptr::addr_of_mut!(_ramfunc);
+    let end = core::ptr::addr_of!(_eramfunc);
+
+    while src < end {
+        core::ptr::write(dst, core::ptr::read(src));
+        src = src.add(1);
+        dst = dst.add(1);
+    }
+}
+
 /// ---------------------------------------------------------------------
 /// APPLICATION MODULE STRUCTURE
 /// ---------------------------------------------------------------------
@@ -29,12 +54,12 @@ mod storage {
     pub mod eeprom;
 }
 
-use panic_halt as _;
 
 use bsp::SYSCLK_HZ;
 use rtic::app;
 use stm32c0::stm32c031 as pac;
 use systick_monotonic::*;
+
 
 #[app(device = pac, peripherals = true, dispatchers = [I2C, SPI, ADC])]
 mod app {

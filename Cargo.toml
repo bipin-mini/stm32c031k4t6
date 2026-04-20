@@ -33,5 +33,5 @@ panic = "abort"
 overflow-checks = false
 debug-assertions = false
 
-debug = false           # set true only during bring-up
-strip = true
+debug = true           # set true only during bring-up
+strip = false
