@@ -346,14 +346,4 @@ pub fn init_rs485_de(gpioa: &pac::GPIOA) {
     gpioa.bsrr().write(|w| w.br3().set_bit());
 }
 
-/// ---------------------------------------------------------------------------
-/// EEPROM FLASH LAYOUT (AN4894)
-/// ---------------------------------------------------------------------------
-pub mod eeprom {
-    pub const PAGE_SIZE: usize = 2048;
 
-    pub const PAGE0_BASE: u32 = 0x0800_7000;
-    pub const PAGE1_BASE: u32 = 0x0800_7800;
-
-    pub const EEPROM_SIZE: usize = 256;
-}

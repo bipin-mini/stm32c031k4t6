@@ -1,232 +1,272 @@
-use crate::bsp::eeprom as cfg;
 use crate::flash::{FlashError, Stm32Flash};
 
-const ERASED: u16 = 0xFFFF;
-const RECEIVE_DATA: u16 = 0xEEEE;
-const VALID_PAGE: u16 = 0x0000;
+/// ---------------------------------------------------------------------------
+/// EEPROM CONFIGURATION (STM32C031 SPECIFIC)
+/// ---------------------------------------------------------------------------
+///
+/// Two-page ping-pong EEPROM emulation.
+/// Each page is used as an append-only log.
+///
+/// IMPORTANT DESIGN RULES:
+/// - Last slot of page is RESERVED for commit marker
+/// - Data is NEVER written into last slot
+/// - Page is considered VALID only if commit marker exists
+///
+const PAGE_A: u32 = 0x0803_8000;
+const PAGE_B: u32 = 0x0803_A000;
+const PAGE_SIZE: u32 = 2048;
 
-const ERASED_DW: u64 = 0xFFFF_FFFF_FFFF_FFFF;
+/// Each entry = 64-bit
+const SLOT_SIZE: u32 = 8;
 
+/// Erased flash value
+const ERASED: u64 = u64::MAX;
+
+/// Page commit marker (must be unique & never valid data)
+const PAGE_MAGIC: u64 = 0xA5A5_F0F0_5A5A_F0F0;
+
+/// Last usable slot index
+const LAST_SLOT_OFFSET: u32 = PAGE_SIZE - SLOT_SIZE;
+
+/// ---------------------------------------------------------------------------
+/// EEPROM STRUCTURE
+/// ---------------------------------------------------------------------------
+///
+/// Maintains:
+/// - Active page
+/// - Write pointer (next free slot)
+///
+/// Guarantees:
+/// - Power-fail safe append
+/// - Page swap only during controlled operations
+///
 pub struct Eeprom {
     flash: Stm32Flash,
     active_page: u32,
-
-    /// Next free write location (O(1) writes)
     write_ptr: u32,
 }
 
 impl Eeprom {
-    pub fn new(mut flash: Stm32Flash) -> Result<Self, FlashError> {
-        let p0 = Self::read_status(&flash, cfg::PAGE0_BASE);
-        let p1 = Self::read_status(&flash, cfg::PAGE1_BASE);
 
-        let active = match (p0, p1) {
-            (VALID_PAGE, ERASED) => cfg::PAGE0_BASE,
-            (ERASED, VALID_PAGE) => cfg::PAGE1_BASE,
+    // ================================================================
+    // INIT (BOOT RECOVERY)
+    // ================================================================
+    ///
+    /// Recovery logic:
+    /// 1. Scan both pages
+    /// 2. Prefer committed page
+    /// 3. Fallback to most filled page
+    ///
+    pub fn new(flash: Stm32Flash) -> Self {
+        let (a_ptr, a_valid) = Self::scan_page(PAGE_A);
+        let (b_ptr, b_valid) = Self::scan_page(PAGE_B);
 
-            (RECEIVE_DATA, VALID_PAGE) => {
-                Self::recover(&mut flash, cfg::PAGE0_BASE, cfg::PAGE1_BASE)?;
-                cfg::PAGE0_BASE
-            }
-            (VALID_PAGE, RECEIVE_DATA) => {
-                Self::recover(&mut flash, cfg::PAGE1_BASE, cfg::PAGE0_BASE)?;
-                cfg::PAGE1_BASE
-            }
+        let (active_page, write_ptr) = match (a_valid, b_valid) {
+            (true, false) => (PAGE_A, a_ptr),
+            (false, true) => (PAGE_B, b_ptr),
 
+            // both valid OR both invalid → choose most recent (longer log)
             _ => {
-                flash.erase_page(cfg::PAGE0_BASE)?;
-                flash.write_double_word(cfg::PAGE0_BASE, Self::header_word(VALID_PAGE))?;
-                cfg::PAGE0_BASE
+                if a_ptr >= b_ptr {
+                    (PAGE_A, a_ptr)
+                } else {
+                    (PAGE_B, b_ptr)
+                }
             }
         };
 
-        let write_ptr = Self::find_write_ptr(&flash, active);
-
-        Ok(Self {
+        Self {
             flash,
-            active_page: active,
+            active_page,
             write_ptr,
-        })
+        }
     }
 
-    #[inline(always)]
-    fn header_word(status: u16) -> u64 {
-        (ERASED_DW & !0xFFFF) | (status as u64)
-    }
+    // ================================================================
+    // PAGE SCAN
+    // ================================================================
+    ///
+    /// Returns:
+    /// - next write pointer
+    /// - whether page is COMMITTED
+    ///
+    fn scan_page(page: u32) -> (u32, bool) {
+        let mut addr = page;
+        let end = page + LAST_SLOT_OFFSET; // exclude commit slot
 
-    #[inline(always)]
-    fn read_status(flash: &Stm32Flash, base: u32) -> u16 {
-        flash.read_word(base) as u16
-    }
+        while addr < end {
+            let word = unsafe { core::ptr::read_volatile(addr as *const u64) };
 
-    #[inline(always)]
-    fn read_dw(&self, addr: u32) -> u64 {
-        let low = self.flash.read_word(addr) as u64;
-        let high = self.flash.read_word(addr + 4) as u64;
-        (high << 32) | low
-    }
-
-    /// ---------------------------------------------------------------
-    /// FAST WRITE POINTER INIT (boot-time scan)
-    /// ---------------------------------------------------------------
-    fn find_write_ptr(flash: &Stm32Flash, page: u32) -> u32 {
-        let mut addr = page + 8;
-
-        while addr < page + cfg::PAGE_SIZE as u32 {
-            let low = flash.read_word(addr);
-            let high = flash.read_word(addr + 4);
-
-            if ((high as u64) << 32 | low as u64) == ERASED_DW {
-                return addr;
+            if word == ERASED {
+                break;
             }
 
-            addr += 8;
+            if Self::decode(word).is_none() {
+                break;
+            }
+
+            addr += SLOT_SIZE;
         }
 
-        addr // page full
+        let committed = Self::is_page_committed(page);
+
+        (addr, committed)
     }
 
-    fn recover(flash: &mut Stm32Flash, new_page: u32, old_page: u32) -> Result<(), FlashError> {
-        flash.write_double_word(new_page, Self::header_word(VALID_PAGE))?;
-        flash.erase_page(old_page)?;
-        Ok(())
+    // ================================================================
+    // COMMIT CHECK
+    // ================================================================
+    ///
+    /// A page is VALID only if commit marker exists at last slot
+    ///
+    fn is_page_committed(page: u32) -> bool {
+        let addr = page + LAST_SLOT_OFFSET;
+        let word = unsafe { core::ptr::read_volatile(addr as *const u64) };
+        word == PAGE_MAGIC
     }
 
-    pub fn read(&self, virt_addr: u16) -> Option<u8> {
+    // ================================================================
+    // ENCODE / DECODE
+    // ================================================================
+    ///
+    /// Simple format:
+    /// [ ID (8-bit) | VALUE (56-bit) ]
+    ///
+    #[inline(always)]
+    fn encode(id: u8, value: u64) -> u64 {
+        ((id as u64) << 56) | (value & 0x00FF_FFFF_FFFF_FFFF)
+    }
+
+    #[inline(always)]
+    fn decode(word: u64) -> Option<(u8, u64)> {
+        if word == ERASED || word == PAGE_MAGIC {
+            return None;
+        }
+
+        let id = (word >> 56) as u8;
+        let value = word & 0x00FF_FFFF_FFFF_FFFF;
+
+        Some((id, value))
+    }
+
+    // ================================================================
+    // READ LAST VALUE
+    // ================================================================
+    ///
+    /// Reverse scan → returns most recent value
+    ///
+    pub fn read(&self, id: u8) -> Option<u64> {
         let mut addr = self.write_ptr;
 
         while addr > self.active_page {
-            addr -= 8;
+            addr -= SLOT_SIZE;
 
-            let dw = self.read_dw(addr);
+            let word = unsafe { core::ptr::read_volatile(addr as *const u64) };
 
-            if dw == ERASED_DW {
-                continue;
-            }
-
-            let va = (dw & 0xFFFF) as u16;
-            let val = ((dw >> 16) & 0xFF) as u8;
-
-            if va == virt_addr {
-                return Some(val);
+            if let Some((i, v)) = Self::decode(word) {
+                if i == id {
+                    return Some(v);
+                }
             }
         }
 
         None
     }
 
-    pub fn write(&mut self, virt_addr: u16, value: u8) -> Result<(), FlashError> {
-        if self.read(virt_addr) == Some(value) {
-            return Ok(());
+    // ================================================================
+    // WRITE ENTRY
+    // ================================================================
+    ///
+    /// Automatically triggers page swap if needed
+    ///
+    pub fn write(&mut self, id: u8, value: u64) -> Result<(), FlashError> {
+        if self.is_near_full() {
+            return self.swap_pages(id, value);
         }
 
-        // 🔴 TRANSFER GUARD (critical)
-        if !self.has_space() {
-            return self.page_transfer(virt_addr, value);
-        }
-
-        self.append_fast(virt_addr, value)
+        self.append(id, value)
     }
 
-    #[inline(always)]
-    fn has_space(&self) -> bool {
-        self.write_ptr < self.active_page + cfg::PAGE_SIZE as u32
-    }
-
-    #[inline(always)]
-    fn encode(virt_addr: u16, value: u8) -> u64 {
-        (virt_addr as u64) | ((value as u64) << 16)
-    }
-
-    /// ---------------------------------------------------------------
-    /// O(1) append
-    /// ---------------------------------------------------------------
-    fn append_fast(&mut self, virt_addr: u16, value: u8) -> Result<(), FlashError> {
+    // ================================================================
+    // APPEND ENTRY
+    // ================================================================
+    ///
+    /// Writes single slot safely
+    ///
+    fn append(&mut self, id: u8, value: u64) -> Result<(), FlashError> {
         let addr = self.write_ptr;
 
-        if addr >= self.active_page + cfg::PAGE_SIZE as u32 {
-            return Err(FlashError::ProgramError);
-        }
+        self.flash.write_double_word(addr, Self::encode(id, value))?;
 
-        self.flash
-            .write_double_word(addr, Self::encode(virt_addr, value))?;
-
-        self.write_ptr += 8;
+        self.write_ptr += SLOT_SIZE;
 
         Ok(())
     }
 
-    fn append(&mut self, page: u32, virt_addr: u16, value: u8) -> Result<(), FlashError> {
-        let mut addr = page + 8;
-
-        while addr < page + cfg::PAGE_SIZE as u32 {
-            if self.read_dw(addr) == ERASED_DW {
-                return self.flash.write_double_word(addr, Self::encode(virt_addr, value));
-            }
-            addr += 8;
-        }
-
-        Ok(())
+    // ================================================================
+    // CAPACITY CHECK
+    // ================================================================
+    ///
+    /// Ensures:
+    /// - space for at least ONE data slot
+    /// - space for commit marker
+    ///
+    fn is_near_full(&self) -> bool {
+        self.write_ptr >= self.active_page + LAST_SLOT_OFFSET - SLOT_SIZE
     }
 
-    fn page_transfer(&mut self, virt_addr: u16, value: u8) -> Result<(), FlashError> {
-        let new_page = if self.active_page == cfg::PAGE0_BASE {
-            cfg::PAGE1_BASE
+    // ================================================================
+    // PAGE SWAP (SAFE + ATOMIC)
+    // ================================================================
+    ///
+    /// Steps:
+    /// 1. Erase new page
+    /// 2. Copy valid entries
+    /// 3. Write new value
+    /// 4. WRITE COMMIT MARKER (FINAL STEP)
+    ///
+    /// Power-fail safety:
+    /// - If commit not written → page ignored
+    /// - Old page remains valid
+    ///
+    fn swap_pages(&mut self, id: u8, value: u64) -> Result<(), FlashError> {
+        let new_page = if self.active_page == PAGE_A {
+            PAGE_B
         } else {
-            cfg::PAGE0_BASE
+            PAGE_A
         };
 
+        // 1. ERASE NEW PAGE
         self.flash.erase_page(new_page)?;
 
-        self.flash
-            .write_double_word(new_page, Self::header_word(RECEIVE_DATA))?;
+        let mut dst = new_page;
+        let mut src = self.active_page;
 
-        for i in 0..cfg::EEPROM_SIZE {
-            let va = i as u16;
+        // 2. COPY VALID ENTRIES
+        while src < self.write_ptr {
+            let word = unsafe { core::ptr::read_volatile(src as *const u64) };
 
-            if va == virt_addr {
-                continue;
+            if let Some((i, v)) = Self::decode(word) {
+                if i != id {
+                    self.flash.write_double_word(dst, Self::encode(i, v))?;
+                    dst += SLOT_SIZE;
+                }
             }
 
-            if let Some(v) = self.read(va) {
-                self.append(new_page, va, v)?;
-            }
+            src += SLOT_SIZE;
         }
 
-        self.append(new_page, virt_addr, value)?;
+        // 3. WRITE NEW VALUE
+        self.flash.write_double_word(dst, Self::encode(id, value))?;
+        dst += SLOT_SIZE;
 
-        self.flash
-            .write_double_word(new_page, Self::header_word(VALID_PAGE))?;
+        // 4. WRITE COMMIT MARKER (CRITICAL ATOMIC POINT)
+        let commit_addr = new_page + LAST_SLOT_OFFSET;
+        self.flash.write_double_word(commit_addr, PAGE_MAGIC)?;
 
-        self.flash.erase_page(self.active_page)?;
-
+        // 5. SWITCH ACTIVE PAGE
         self.active_page = new_page;
-
-        // 🔴 recompute write pointer
-        self.write_ptr = Self::find_write_ptr(&self.flash, new_page);
-
-        Ok(())
-    }
-
-    /// ---------------------------------------------------------------
-    /// POWER FAIL SAFE WRITE (STRICT)
-    /// ---------------------------------------------------------------
-    ///
-    /// - O(1)
-    /// - No scan
-    /// - No erase
-    ///
-    pub fn write_power_fail(&mut self, virt_addr: u16, value: u8) -> Result<(), FlashError> {
-        let addr = self.write_ptr;
-
-        if addr >= self.active_page + cfg::PAGE_SIZE as u32 {
-            return Err(FlashError::ProgramError);
-        }
-
-        self.flash
-            .write_double_word(addr, Self::encode(virt_addr, value))?;
-
-        // no pointer increment needed (system halts after)
+        self.write_ptr = dst;
 
         Ok(())
     }
