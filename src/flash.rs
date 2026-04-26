@@ -71,8 +71,8 @@
 //!
 //! ---------------------------------------------------------------------------
 
+use core::sync::atomic::{Ordering, compiler_fence};
 use stm32c0::stm32c031 as pac;
-use core::sync::atomic::{compiler_fence, Ordering};
 
 /// Flash base address
 const FLASH_BASE: u32 = 0x0800_0000;
@@ -110,7 +110,6 @@ pub struct Stm32Flash {
 }
 
 impl Stm32Flash {
-
     /// -----------------------------------------------------------------------
     /// CREATE DRIVER
     /// -----------------------------------------------------------------------
@@ -183,7 +182,6 @@ impl Stm32Flash {
 
             // --- ready ---
             if !sr.bsy1().bit_is_set() {
-
                 // Clear EOP if set (required by hardware)
                 if sr.eop().bit_is_set() {
                     self.flash.sr().modify(|_, w| w.eop().set_bit());
@@ -230,10 +228,9 @@ impl Stm32Flash {
     /// Operation is blocking.
     ///
     #[inline(never)]
-    #[link_section = ".ramfunc"]
+    #[unsafe(link_section = ".ramfunc")]
     pub fn erase_page(&mut self, page_addr: u32) -> Result<(), FlashError> {
-
-        if page_addr < FLASH_BASE || page_addr % PAGE_SIZE != 0 {
+        if page_addr < FLASH_BASE || !page_addr.is_multiple_of(PAGE_SIZE) {
             return Err(FlashError::AlignmentError);
         }
 
@@ -271,10 +268,9 @@ impl Stm32Flash {
     /// - Interrupts MUST be disabled by caller
     ///
     #[inline(never)]
-    #[link_section = ".ramfunc"]
+    #[unsafe(link_section = ".ramfunc")]
     pub fn write_double_word(&mut self, addr: u32, data: u64) -> Result<(), FlashError> {
-
-        if addr % 8 != 0 {
+        if !addr.is_multiple_of(8) {
             return Err(FlashError::AlignmentError);
         }
 

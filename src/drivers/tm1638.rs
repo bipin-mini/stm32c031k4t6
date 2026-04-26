@@ -7,12 +7,12 @@ use stm32c0::stm32c031 as pac;
 /// ---------------------------------------------------------------------------
 ///
 /// Hardware Interface (GPIOA):
-/// - PA4 → STB  (strobe / chip select, active LOW)
-/// - PA5 → CLK  (serial clock)
-/// - PA7 → DIO  (bidirectional data)
+/// - PA4 → STB (strobe / chip select, active LOW)
+/// - PA5 → CLK (serial clock)
+/// - PA7 → DIO (bidirectional data)
 ///
 /// ---------------------------------------------------------------------------
-/// 🧠 DESIGN OBJECTIVES
+/// DESIGN OBJECTIVES
 /// ---------------------------------------------------------------------------
 ///
 /// - Fully deterministic execution (fixed cycles per byte)
@@ -22,19 +22,19 @@ use stm32c0::stm32c031 as pac;
 /// - Direct register access (no HAL, no abstraction overhead)
 ///
 /// ---------------------------------------------------------------------------
-/// ⚠️ EXECUTION MODEL
+/// EXECUTION MODEL
 /// ---------------------------------------------------------------------------
 ///
-/// - Intended for **main loop / RTIC task context only**
-/// - Must NEVER be called from:
-///     • Encoder ISR
-///     • Power-fail ISR
+/// - Intended for main loop / RTIC task context only
+/// - Must never be called from:
+///   - Encoder ISR
+///   - Power-fail ISR
 ///
 /// - Timing is CPU-dependent:
-///     • Calibrated for 48 MHz SYSCLK
+///   - Calibrated for 48 MHz SYSCLK
 ///
 /// ---------------------------------------------------------------------------
-/// ⚠️ ELECTRICAL / PROTOCOL NOTES
+/// ELECTRICAL / PROTOCOL NOTES
 /// ---------------------------------------------------------------------------
 ///
 /// - TM1638 uses LSB-first serial protocol
@@ -43,11 +43,9 @@ use stm32c0::stm32c031 as pac;
 /// - STB HIGH → transaction end
 ///
 /// - DIO is half-duplex:
-///     • Output during write
-///     • Input during read
-///
+///   - Output during write
+///   - Input during read
 /// ---------------------------------------------------------------------------
-
 // Pin masks (GPIOA)
 const STB: u32 = 1 << 4;
 const CLK: u32 = 1 << 5;
@@ -72,7 +70,6 @@ fn gpio() -> &'static GpioaRb {
 // ---------------------------------------------------------------------------
 // PIN CONTROL (BSRR → atomic, single-cycle)
 // ---------------------------------------------------------------------------
-
 #[inline(always)]
 fn stb_high() {
     gpio().bsrr().write(|w| w.bs4().set_bit());
@@ -113,11 +110,11 @@ fn dio_read() -> bool {
 // DIO DIRECTION CONTROL
 // ---------------------------------------------------------------------------
 ///
-/// ⚠️ NOTE:
-/// - Uses MODER read-modify-write (non-constant-time)
+/// NOTE:
+/// - Uses MODER read-modify-write (not constant-time)
 /// - Acceptable because:
-///     • Not used in ISR
-///     • TM1638 is low-speed peripheral
+///   - Not used in ISR
+///   - TM1638 is a low-speed peripheral
 ///
 #[inline(always)]
 fn dio_output() {
@@ -241,7 +238,7 @@ pub fn set_display(on: bool, brightness: u8) {
 ///
 /// Memory layout:
 /// - Even addresses → segment data
-/// - Odd addresses  → LED control
+/// - Odd addresses → LED control
 ///
 /// Sequence:
 /// 1. Set auto-increment mode
@@ -273,7 +270,7 @@ pub fn clear() {
 /// Read key scan data (4 bytes)
 ///
 /// Each byte contains multiplexed key states.
-/// Decoding is handled at higher layer.
+/// Decoding is handled at a higher layer.
 pub fn read_keys(buf: &mut [u8; 4]) {
     stb_low();
     write_byte(CMD_DATA_READ);

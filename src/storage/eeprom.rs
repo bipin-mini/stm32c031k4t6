@@ -47,7 +47,6 @@ pub struct Eeprom {
 }
 
 impl Eeprom {
-
     // ================================================================
     // INIT (BOOT RECOVERY)
     // ================================================================
@@ -163,10 +162,10 @@ impl Eeprom {
 
             let word = unsafe { core::ptr::read_volatile(addr as *const u64) };
 
-            if let Some((i, v)) = Self::decode(word) {
-                if i == id {
-                    return Some(v);
-                }
+            if let Some((i, v)) = Self::decode(word)
+                && i == id
+            {
+                return Some(v);
             }
         }
 
@@ -196,7 +195,8 @@ impl Eeprom {
     fn append(&mut self, id: u8, value: u64) -> Result<(), FlashError> {
         let addr = self.write_ptr;
 
-        self.flash.write_double_word(addr, Self::encode(id, value))?;
+        self.flash
+            .write_double_word(addr, Self::encode(id, value))?;
 
         self.write_ptr += SLOT_SIZE;
 
@@ -246,11 +246,11 @@ impl Eeprom {
         while src < self.write_ptr {
             let word = unsafe { core::ptr::read_volatile(src as *const u64) };
 
-            if let Some((i, v)) = Self::decode(word) {
-                if i != id {
-                    self.flash.write_double_word(dst, Self::encode(i, v))?;
-                    dst += SLOT_SIZE;
-                }
+            if let Some((i, v)) = Self::decode(word)
+                && i != id
+            {
+                self.flash.write_double_word(dst, Self::encode(i, v))?;
+                dst += SLOT_SIZE;
             }
 
             src += SLOT_SIZE;

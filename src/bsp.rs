@@ -345,5 +345,3 @@ pub fn init_rs485_de(gpioa: &pac::GPIOA) {
     // Default to RX mode
     gpioa.bsrr().write(|w| w.br3().set_bit());
 }
-
-

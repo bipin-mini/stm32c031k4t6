@@ -14,7 +14,6 @@ use crate::drivers::uart;
 /// ✔ No parsing until full frame received
 ///
 /// ---------------------------------------------------------------------------
-
 const SLAVE_ADDR: u8 = 1;
 const REG_COUNT: usize = 16;
 

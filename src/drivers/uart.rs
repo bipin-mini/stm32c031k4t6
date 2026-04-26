@@ -11,23 +11,23 @@ use stm32c0::stm32c031 as pac;
 /// - RX → PA10 (AF1)
 ///
 /// ---------------------------------------------------------------------------
-/// 🧠 Functional Overview
+/// Functional Overview
 /// ---------------------------------------------------------------------------
 ///
 /// - RX path:
-///     • Interrupt-driven (RXFNE event)
-///     • Lock-free buffering (SPSC ring buffer)
+///   - Interrupt-driven (RXFNE event)
+///   - Lock-free buffering (SPSC ring buffer)
 ///
 /// - TX path:
-///     • Polling-based (blocking, deterministic)
-///     • Used for short frames (e.g., Modbus RTU)
+///   - Polling-based (blocking, deterministic)
+///   - Used for short frames (e.g., Modbus RTU)
 ///
 /// - RS485:
-///     • DE pin controlled in software (PA3)
-///     • Direction switching handled in TX path
+///   - DE pin controlled in software (PA3)
+///   - Direction switching handled in TX path
 ///
 /// ---------------------------------------------------------------------------
-/// 🧠 Design Principles
+/// Design Principles
 /// ---------------------------------------------------------------------------
 ///
 /// - ISR executes in constant time (single-byte enqueue)
@@ -35,18 +35,18 @@ use stm32c0::stm32c031 as pac;
 /// - No locks or critical sections
 /// - Zero-copy RX path
 /// - Strict separation:
-///     • Driver → transport only
-///     • Higher layer → protocol handling
+///   - Driver → transport only
+///   - Higher layer → protocol handling
 ///
 /// ---------------------------------------------------------------------------
-/// ⚠️ Concurrency Model (SPSC - Single Producer / Single Consumer)
+/// Concurrency Model (SPSC - Single Producer / Single Consumer)
 /// ---------------------------------------------------------------------------
 ///
 /// - Producer:
-///     • USART1 ISR (push)
+///   - USART1 ISR (push)
 ///
 /// - Consumer:
-///     • RTIC task / main loop (pop)
+///   - RTIC task / main loop (pop)
 ///
 /// Guarantees:
 /// - Single-core Cortex-M0+
@@ -55,7 +55,7 @@ use stm32c0::stm32c031 as pac;
 /// - Tail modified only by task
 ///
 /// ---------------------------------------------------------------------------
-/// ⚠️ Safety Model
+/// Safety Model
 /// ---------------------------------------------------------------------------
 ///
 /// Uses `UnsafeCell` to enable interior mutability of a static buffer.
@@ -63,8 +63,8 @@ use stm32c0::stm32c031 as pac;
 /// Justification:
 /// - `static mut` avoided (Rust 2024 compliance)
 /// - Access partitioned:
-///     • ISR → write only
-///     • Task → read only
+///   - ISR → write only
+///   - Task → read only
 ///
 /// Invariants:
 /// - No aliasing of mutable references
@@ -72,7 +72,6 @@ use stm32c0::stm32c031 as pac;
 ///
 /// Standard pattern for lock-free embedded SPSC buffers.
 /// ---------------------------------------------------------------------------
-
 const RX_BUF_SIZE: usize = 256; // Must be power-of-two
 
 // ---------------------------------------------------------------------------

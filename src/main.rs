@@ -3,42 +3,39 @@
 
 use panic_halt as _;
 
-/* =====================================================================
-   PRE-INIT HOOK (RAM FUNCTION RELOCATION)
-   =====================================================================
-
-   STM32 Flash cannot be read while it is being programmed or erased.
-   Therefore, all Flash-modifying routines must execute from RAM.
-
-   The linker script places such functions in a special section:
-       `.ramfunc`
-
-   This pre-init hook runs *before main()* and copies that section
-   from Flash → SRAM.
-
-   Symbols:
-     _sramfunc : start of source (Flash)
-     _eramfunc : end of source (Flash)
-     _ramfunc  : destination (RAM)
-
-   This is mandatory for safe Flash operations.
-*/
-#[no_mangle]
+/// Pre-initialization hook to relocate `.ramfunc` section from Flash to SRAM.
+///
+/// Copies memory from `_sramfunc.._eramfunc` (Flash) to `_ramfunc` (RAM).
+///
+/// This is required because STM32 Flash cannot be accessed while it is being
+/// programmed or erased, so Flash-modifying routines must execute from RAM.
+///
+/// # Safety
+///
+/// - Must be called exactly once before `main()`.
+/// - Linker symbols (`_sramfunc`, `_eramfunc`, `_ramfunc`) must be valid.
+/// - Source and destination regions must not overlap incorrectly.
+/// - Memory must be properly aligned for `u32` access.
+/// - Flash must be readable and SRAM must be writable at the time of execution.
+/// - The size defined by the linker must be correct (no out-of-bounds copy).
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn __pre_init() {
-    extern "C" {
-        static mut _sramfunc: u32;
-        static mut _eramfunc: u32;
-        static mut _ramfunc: u32;
-    }
+    unsafe {
+        unsafe extern "C" {
+            static mut _sramfunc: u32;
+            static mut _eramfunc: u32;
+            static mut _ramfunc: u32;
+        }
 
-    let mut src = core::ptr::addr_of!(_sramfunc);
-    let mut dst = core::ptr::addr_of_mut!(_ramfunc);
-    let end = core::ptr::addr_of!(_eramfunc);
+        let mut src = core::ptr::addr_of!(_sramfunc);
+        let mut dst = core::ptr::addr_of_mut!(_ramfunc);
+        let end = core::ptr::addr_of!(_eramfunc);
 
-    while src < end {
-        core::ptr::write(dst, core::ptr::read(src));
-        src = src.add(1);
-        dst = dst.add(1);
+        while src < end {
+            core::ptr::write(dst, core::ptr::read(src));
+            src = src.add(1);
+            dst = dst.add(1);
+        }
     }
 }
 
@@ -46,10 +43,10 @@ pub unsafe extern "C" fn __pre_init() {
    MODULE ORGANIZATION
    =====================================================================
 
-   bsp      → board support (clock, GPIO, EXTI setup)
-   flash    → low-level STM32 Flash driver (no policy)
-   eeprom   → log-structured storage layer on Flash
-   drivers  → hardware drivers (encoder, UART, relay, display)
+   - bsp      → board support (clock, GPIO, EXTI setup)
+   - flash    → low-level STM32 Flash driver (no policy)
+   - eeprom   → log-structured storage layer on Flash
+   - drivers  → hardware drivers (encoder, UART, relay, display)
 */
 mod bsp;
 pub mod flash;
@@ -75,7 +72,7 @@ use systick_monotonic::*;
    POWER FAIL SNAPSHOT (CRITICAL STATE BUFFER)
    =====================================================================
 
-   This structure captures the *minimal required system state*
+   This structure captures the minimal required system state
    at the exact moment of power failure.
 
    Design goals:
@@ -88,7 +85,7 @@ use systick_monotonic::*;
    - valid   : indicates snapshot is pending commit
 
    NOTE:
-   This acts as a "bridge" between ISR context and main execution.
+   This acts as a bridge between ISR context and main execution.
 */
 #[derive(Copy, Clone)]
 pub struct PowerSnapshot {
@@ -117,7 +114,7 @@ mod app {
        ---------------------------------------------------------
 
        Used for timekeeping and scheduling if needed.
-       Currently not heavily used, but provides future extensibility.
+       Currently lightly used, but allows future extensibility.
     */
     #[monotonic(binds = SysTick, default = true)]
     type SysMono = Systick<1000>;
@@ -139,7 +136,7 @@ mod app {
     }
 
     /* ---------------------------------------------------------
-       LOCAL STATE (OWNED BY A SINGLE CONTEXT)
+       LOCAL STATE (SINGLE-CONTEXT OWNERSHIP)
        ---------------------------------------------------------
 
        These resources are only accessed from the idle context,
@@ -153,38 +150,30 @@ mod app {
     }
 
     /* =============================================================
-       SYSTEM INITIALIZATION
-       ============================================================= */
+    SYSTEM INITIALIZATION
+    ============================================================= */
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         let dp = ctx.device;
 
-        // ---------------------------------------------------------
-        // BOARD INITIALIZATION
-        // ---------------------------------------------------------
+        // Board initialization
         bsp::init_clocks(&dp.RCC);
         bsp::init_gpioa(&dp.GPIOA);
         bsp::init_usart1_pins(&dp.GPIOA);
         bsp::init_rs485_de(&dp.GPIOA);
         bsp::init_exti(&dp.EXTI);
 
-        // ---------------------------------------------------------
-        // DRIVER INITIALIZATION
-        // ---------------------------------------------------------
+        // Driver initialization
         drivers::encoder::init();
         drivers::uart::init(&dp.USART1, &dp.RCC);
         drivers::relay::init(&dp.GPIOB);
         drivers::tm1638::init();
 
-        // ---------------------------------------------------------
-        // EEPROM (FLASH BACKED STORAGE)
-        // ---------------------------------------------------------
+        // EEPROM (Flash-backed storage)
         let flash = Stm32Flash::new(dp.FLASH);
         let eeprom = Eeprom::new(flash);
 
-        // ---------------------------------------------------------
-        // SYSTEM TIMER
-        // ---------------------------------------------------------
+        // System timer
         let mono = Systick::new(ctx.core.SYST, SYSCLK_HZ);
 
         (
@@ -204,12 +193,8 @@ mod app {
     }
 
     /* =============================================================
-       ENCODER INTERRUPT
-       =============================================================
-
-       Handles quadrature decoding (X4 mode typically).
-       High priority to avoid missed pulses.
-    */
+    ENCODER INTERRUPT
+    ============================================================= */
     #[task(binds = EXTI0_1, priority = 2)]
     fn exti0_1(_ctx: exti0_1::Context) {
         drivers::encoder::isr();
@@ -219,32 +204,23 @@ mod app {
        POWER FAIL INTERRUPT (CRITICAL PATH)
        =============================================================
 
-       This is the MOST critical part of the system.
-
-       Design constraints:
+       Constraints:
        - Must execute in minimal time
-       - Must NOT perform Flash writes here
+       - Must not perform Flash writes
        - Must capture system state deterministically
 
        Strategy:
-       1. Disable interrupts (freeze system)
-       2. Capture encoder state immediately
+       1. Disable interrupts
+       2. Capture encoder state
        3. Mark snapshot as valid
-       4. Exit quickly
+       4. Exit immediately
 
        Flash write is deferred to idle loop.
     */
     #[task(binds = EXTI4_15, priority = 3, shared = [snapshot])]
     fn power_fail_irq(mut ctx: power_fail_irq::Context) {
-
-        // ---------------------------------------------------------
-        // HARD STOP: prevent further system activity
-        // ---------------------------------------------------------
         cortex_m::interrupt::disable();
 
-        // ---------------------------------------------------------
-        // CAPTURE CRITICAL STATE
-        // ---------------------------------------------------------
         let encoder = drivers::encoder::get_count() as u64;
 
         ctx.shared.snapshot.lock(|snap| {
@@ -252,9 +228,6 @@ mod app {
             snap.valid = true;
         });
 
-        // ---------------------------------------------------------
-        // CLEAR EXTI INTERRUPT FLAG
-        // ---------------------------------------------------------
         let exti = unsafe { &*pac::EXTI::ptr() };
         const MASK: u32 = 1 << 6;
 
@@ -263,74 +236,51 @@ mod app {
     }
 
     /* =============================================================
-       UART INTERRUPT
-       ============================================================= */
+    UART INTERRUPT
+    ============================================================= */
     #[task(binds = USART1, priority = 1, local = [uart])]
     fn usart1_irq(ctx: usart1_irq::Context) {
         drivers::uart::isr(ctx.local.uart);
     }
 
     /* =============================================================
-       IDLE LOOP (MAIN EXECUTION CONTEXT)
+       IDLE LOOP (MAIN EXECUTION)
        =============================================================
 
        Responsibilities:
        - Handle power-fail commit
-       - Process background tasks
+       - Perform background processing
        - Enter low-power wait when idle
 
-       IMPORTANT:
-       This is the ONLY place where Flash write occurs during
-       power-fail handling.
+       Flash writes occur only here.
     */
     #[idle(shared = [snapshot], local = [eeprom, gpiob])]
     fn idle(mut ctx: idle::Context) -> ! {
-
         loop {
-
-            // -----------------------------------------------------
-            // POWER FAIL COMMIT (EXECUTED EXACTLY ONCE)
-            // -----------------------------------------------------
+            // Power-fail commit (execute once)
             let mut do_commit = None;
 
             ctx.shared.snapshot.lock(|snap| {
                 if snap.valid {
                     do_commit = Some(snap.encoder);
-                    snap.valid = false; // consume event
+                    snap.valid = false;
                 }
             });
 
             if let Some(encoder) = do_commit {
-
-                // -------------------------------------------------
-                // EEPROM WRITE
-                // -------------------------------------------------
-                // Assumption:
-                // - At least ONE slot is always free
-                // - No erase happens in this path
                 let _ = ctx.local.eeprom.write(0x01, encoder);
 
-                // -------------------------------------------------
-                // SAFE OUTPUT SHUTDOWN
-                // -------------------------------------------------
                 drivers::relay::off(ctx.local.gpiob);
 
-                // -------------------------------------------------
-                // HALT SYSTEM (WAIT FOR POWER LOSS)
-                // -------------------------------------------------
                 loop {
                     cortex_m::asm::nop();
                 }
             }
 
-            // -----------------------------------------------------
-            // BACKGROUND PROCESSING
-            // -----------------------------------------------------
+            // Background processing
             while let Some(_b) = drivers::uart::read() {}
 
-            // -----------------------------------------------------
-            // LOW POWER WAIT
-            // -----------------------------------------------------
+            // Low-power wait
             cortex_m::asm::wfi();
         }
     }
