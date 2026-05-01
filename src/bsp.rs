@@ -337,11 +337,45 @@ pub fn init_usart1_pins(gpioa: &pac::GPIOA) {
 /// - HIGH → transmit
 ///
 pub fn init_rs485_de(gpioa: &pac::GPIOA) {
-    gpioa.moder().modify(|_, w| w.mode3().output());
-    gpioa.otyper().modify(|_, w| w.ot3().clear_bit());
-    gpioa.ospeedr().modify(|_, w| w.ospeed3().low_speed());
-    gpioa.pupdr().modify(|_, w| w.pupd3().floating());
+    // PA12 → USART1_DE (AF1)
 
-    // Default to RX mode
-    gpioa.bsrr().write(|w| w.br3().set_bit());
+    gpioa.moder().modify(|_, w| w.mode12().alternate());
+
+    gpioa.afrh().modify(|_, w| unsafe {
+        w.afr(4).bits(1) // AF1 for USART1_DE
+    });
+
+    gpioa.otyper().modify(|_, w| w.ot12().clear_bit()); // push-pull
+    gpioa.ospeedr().modify(|_, w| w.ospeed12().high_speed());
+    gpioa.pupdr().modify(|_, w| w.pupd12().floating());
+}
+
+pub fn init_i2c1_pins(gpiob: &pac::GPIOB) {
+    // Example: PB6 = SCL, PB7 = SDA (check your exact AF mapping!)
+
+    gpiob.moder().modify(|_, w| {
+        w.mode6().alternate(); // SCL
+        w.mode7().alternate() // SDA
+    });
+
+    gpiob.otyper().modify(|_, w| {
+        w.ot6().set_bit(); // open-drain
+        w.ot7().set_bit()
+    });
+
+    gpiob.afrl().modify(|_, w| unsafe {
+        w.afr(6).bits(6); // AF6 = I2C1
+        w.afr(7).bits(6);
+        w
+    });
+
+    gpiob.pupdr().modify(|_, w| {
+        w.pupd6().pull_up();
+        w.pupd7().pull_up()
+    });
+
+    gpiob.ospeedr().modify(|_, w| {
+        w.ospeed6().high_speed();
+        w.ospeed7().high_speed()
+    });
 }

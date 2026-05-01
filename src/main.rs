@@ -2,54 +2,9 @@
 #![no_main]
 
 use panic_halt as _;
+use stm32c0::stm32c031 as pac;
 
-/// Pre-initialization hook to relocate `.ramfunc` section from Flash to SRAM.
-///
-/// Copies memory from `_sramfunc.._eramfunc` (Flash) to `_ramfunc` (RAM).
-///
-/// This is required because STM32 Flash cannot be accessed while it is being
-/// programmed or erased, so Flash-modifying routines must execute from RAM.
-///
-/// # Safety
-///
-/// - Must be called exactly once before `main()`.
-/// - Linker symbols (`_sramfunc`, `_eramfunc`, `_ramfunc`) must be valid.
-/// - Source and destination regions must not overlap incorrectly.
-/// - Memory must be properly aligned for `u32` access.
-/// - Flash must be readable and SRAM must be writable at the time of execution.
-/// - The size defined by the linker must be correct (no out-of-bounds copy).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn __pre_init() {
-    unsafe {
-        unsafe extern "C" {
-            static mut _sramfunc: u32;
-            static mut _eramfunc: u32;
-            static mut _ramfunc: u32;
-        }
-
-        let mut src = core::ptr::addr_of!(_sramfunc);
-        let mut dst = core::ptr::addr_of_mut!(_ramfunc);
-        let end = core::ptr::addr_of!(_eramfunc);
-
-        while src < end {
-            core::ptr::write(dst, core::ptr::read(src));
-            src = src.add(1);
-            dst = dst.add(1);
-        }
-    }
-}
-
-/* =====================================================================
-   MODULE ORGANIZATION
-   =====================================================================
-
-   - bsp      → board support (clock, GPIO, EXTI setup)
-   - flash    → low-level STM32 Flash driver (no policy)
-   - eeprom   → log-structured storage layer on Flash
-   - drivers  → hardware drivers (encoder, UART, relay, display)
-*/
 mod bsp;
-pub mod flash;
 mod modbus;
 
 mod drivers {
@@ -65,115 +20,62 @@ mod storage {
 
 use bsp::SYSCLK_HZ;
 use rtic::app;
-use stm32c0::stm32c031 as pac;
 use systick_monotonic::*;
 
-/* =====================================================================
-   POWER FAIL SNAPSHOT (CRITICAL STATE BUFFER)
-   =====================================================================
-
-   This structure captures the minimal required system state
-   at the exact moment of power failure.
-
-   Design goals:
-   - Must be trivially copyable (no heap, no allocation)
-   - Must be written extremely fast (ISR-safe)
-   - Must survive until idle loop commits to Flash
-
-   Fields:
-   - encoder : last known encoder count
-   - valid   : indicates snapshot is pending commit
-
-   NOTE:
-   This acts as a bridge between ISR context and main execution.
-*/
 #[derive(Copy, Clone)]
 pub struct PowerSnapshot {
     encoder: u64,
     valid: bool,
 }
 
-/* =====================================================================
-   RTIC APPLICATION
-   =====================================================================
-
-   RTIC (Real-Time Interrupt-driven Concurrency) ensures:
-   - Safe shared access without data races
-   - Deterministic interrupt priority handling
-   - Zero-cost abstractions (no runtime scheduler)
-*/
 #[app(device = pac, peripherals = true, dispatchers = [I2C, SPI, ADC])]
 mod app {
 
     use super::*;
-    use crate::flash::Stm32Flash;
+    use crate::drivers::uart::Uart;
+    use crate::modbus::Modbus;
     use crate::storage::eeprom::Eeprom;
 
-    /* ---------------------------------------------------------
-       MONOTONIC TIMER (1 kHz SYSTEM TICK)
-       ---------------------------------------------------------
-
-       Used for timekeeping and scheduling if needed.
-       Currently lightly used, but allows future extensibility.
-    */
     #[monotonic(binds = SysTick, default = true)]
     type SysMono = Systick<1000>;
 
-    /* ---------------------------------------------------------
-       SHARED STATE (MULTI-CONTEXT ACCESS)
-       ---------------------------------------------------------
-
-       Shared between:
-       - Interrupt context (power_fail_irq)
-       - Idle loop (main execution)
-
-       Access must be protected using `.lock()`.
-    */
     #[shared]
     struct Shared {
-        /// Power-fail snapshot shared between ISR and idle loop
         snapshot: PowerSnapshot,
     }
 
-    /* ---------------------------------------------------------
-       LOCAL STATE (SINGLE-CONTEXT OWNERSHIP)
-       ---------------------------------------------------------
-
-       These resources are only accessed from the idle context,
-       so no locking is required.
-    */
     #[local]
     struct Local {
-        uart: pac::USART1,
+        uart: Uart,
+        modbus: Modbus,
         eeprom: Eeprom,
         gpiob: pac::GPIOB,
     }
 
-    /* =============================================================
-    SYSTEM INITIALIZATION
-    ============================================================= */
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         let dp = ctx.device;
 
-        // Board initialization
+        // BSP
         bsp::init_clocks(&dp.RCC);
         bsp::init_gpioa(&dp.GPIOA);
         bsp::init_usart1_pins(&dp.GPIOA);
         bsp::init_rs485_de(&dp.GPIOA);
+
+        // ✅ FIX: use GPIOB for I2C
+        bsp::init_i2c1_pins(&dp.GPIOB);
+
         bsp::init_exti(&dp.EXTI);
 
-        // Driver initialization
+        // Drivers
         drivers::encoder::init();
-        drivers::uart::init(&dp.USART1, &dp.RCC);
         drivers::relay::init(&dp.GPIOB);
         drivers::tm1638::init();
 
-        // EEPROM (Flash-backed storage)
-        let flash = Stm32Flash::new(dp.FLASH);
-        let eeprom = Eeprom::new(flash);
+        let uart = Uart::new(dp.USART1, &dp.RCC);
+        let modbus = Modbus::new();
+        let eeprom = Eeprom::new(dp.I2C1, &dp.RCC);
 
-        // System timer
         let mono = Systick::new(ctx.core.SYST, SYSCLK_HZ);
 
         (
@@ -184,7 +86,8 @@ mod app {
                 },
             },
             Local {
-                uart: dp.USART1,
+                uart,
+                modbus,
                 eeprom,
                 gpiob: dp.GPIOB,
             },
@@ -192,31 +95,11 @@ mod app {
         )
     }
 
-    /* =============================================================
-    ENCODER INTERRUPT
-    ============================================================= */
     #[task(binds = EXTI0_1, priority = 2)]
     fn exti0_1(_ctx: exti0_1::Context) {
         drivers::encoder::isr();
     }
 
-    /* =============================================================
-       POWER FAIL INTERRUPT (CRITICAL PATH)
-       =============================================================
-
-       Constraints:
-       - Must execute in minimal time
-       - Must not perform Flash writes
-       - Must capture system state deterministically
-
-       Strategy:
-       1. Disable interrupts
-       2. Capture encoder state
-       3. Mark snapshot as valid
-       4. Exit immediately
-
-       Flash write is deferred to idle loop.
-    */
     #[task(binds = EXTI4_15, priority = 3, shared = [snapshot])]
     fn power_fail_irq(mut ctx: power_fail_irq::Context) {
         cortex_m::interrupt::disable();
@@ -235,29 +118,34 @@ mod app {
         exti.fpr1().write(|w| unsafe { w.bits(MASK) });
     }
 
-    /* =============================================================
-    UART INTERRUPT
-    ============================================================= */
-    #[task(binds = USART1, priority = 1, local = [uart])]
+    #[task(binds = USART1, priority = 1, local = [uart, modbus])]
     fn usart1_irq(ctx: usart1_irq::Context) {
-        drivers::uart::isr(ctx.local.uart);
+        let uart = ctx.local.uart;
+        let usart = &uart.usart;
+
+        let isr = usart.isr().read();
+
+        // ---------------- RX BYTE ----------------
+        if isr.rxfne().bit_is_set() {
+            let b = usart.rdr().read().bits() as u8;
+            ctx.local.modbus.push_byte(b);
+        }
+
+        // ---------------- FRAME COMPLETE ----------------
+        if isr.rtof().bit_is_set() {
+            usart.icr().write(|w| w.rtocf().clear());
+
+            ctx.local.modbus.process(uart);
+        }
+
+        // ---------------- TX COMPLETE ----------------
+        if isr.tc().bit_is_set() {
+            usart.icr().write(|w| w.tccf().clear());
+        }
     }
-
-    /* =============================================================
-       IDLE LOOP (MAIN EXECUTION)
-       =============================================================
-
-       Responsibilities:
-       - Handle power-fail commit
-       - Perform background processing
-       - Enter low-power wait when idle
-
-       Flash writes occur only here.
-    */
     #[idle(shared = [snapshot], local = [eeprom, gpiob])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
-            // Power-fail commit (execute once)
             let mut do_commit = None;
 
             ctx.shared.snapshot.lock(|snap| {
@@ -268,7 +156,8 @@ mod app {
             });
 
             if let Some(encoder) = do_commit {
-                let _ = ctx.local.eeprom.write(0x01, encoder);
+                let bytes = encoder.to_le_bytes();
+                ctx.local.eeprom.write(0x01, &bytes);
 
                 drivers::relay::off(ctx.local.gpiob);
 
@@ -277,10 +166,6 @@ mod app {
                 }
             }
 
-            // Background processing
-            while let Some(_b) = drivers::uart::read() {}
-
-            // Low-power wait
             cortex_m::asm::wfi();
         }
     }

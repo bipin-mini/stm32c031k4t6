@@ -1,273 +1,191 @@
-use crate::flash::{FlashError, Stm32Flash};
+use stm32c0::stm32c031 as pac;
 
 /// ---------------------------------------------------------------------------
-/// EEPROM CONFIGURATION (STM32C031 SPECIFIC)
+/// 24C02 EEPROM Driver (I2C1, PAC only)
 /// ---------------------------------------------------------------------------
 ///
-/// Two-page ping-pong EEPROM emulation.
-/// Each page is used as an append-only log.
+/// Device: ST24C02 (256 bytes)
+/// Page size: 8 bytes
+/// Write cycle: ~5 ms (handled via ACK polling)
 ///
-/// IMPORTANT DESIGN RULES:
-/// - Last slot of page is RESERVED for commit marker
-/// - Data is NEVER written into last slot
-/// - Page is considered VALID only if commit marker exists
-///
-const PAGE_A: u32 = 0x0803_8000;
-const PAGE_B: u32 = 0x0803_A000;
-const PAGE_SIZE: u32 = 2048;
-
-/// Each entry = 64-bit
-const SLOT_SIZE: u32 = 8;
-
-/// Erased flash value
-const ERASED: u64 = u64::MAX;
-
-/// Page commit marker (must be unique & never valid data)
-const PAGE_MAGIC: u64 = 0xA5A5_F0F0_5A5A_F0F0;
-
-/// Last usable slot index
-const LAST_SLOT_OFFSET: u32 = PAGE_SIZE - SLOT_SIZE;
-
 /// ---------------------------------------------------------------------------
-/// EEPROM STRUCTURE
-/// ---------------------------------------------------------------------------
-///
-/// Maintains:
-/// - Active page
-/// - Write pointer (next free slot)
-///
-/// Guarantees:
-/// - Power-fail safe append
-/// - Page swap only during controlled operations
-///
+const EEPROM_ADDR: u8 = 0x50;
+const PAGE_SIZE: usize = 8;
+
 pub struct Eeprom {
-    flash: Stm32Flash,
-    active_page: u32,
-    write_ptr: u32,
+    i2c: pac::I2C1,
 }
 
 impl Eeprom {
-    // ================================================================
-    // INIT (BOOT RECOVERY)
-    // ================================================================
-    ///
-    /// Recovery logic:
-    /// 1. Scan both pages
-    /// 2. Prefer committed page
-    /// 3. Fallback to most filled page
-    ///
-    pub fn new(flash: Stm32Flash) -> Self {
-        let (a_ptr, a_valid) = Self::scan_page(PAGE_A);
-        let (b_ptr, b_valid) = Self::scan_page(PAGE_B);
+    /// -----------------------------------------------------------------------
+    /// Init I2C1 (Standard Mode 100kHz @ 48 MHz)
+    /// -----------------------------------------------------------------------
+    pub fn new(i2c: pac::I2C1, rcc: &pac::RCC) -> Self {
+        // Enable clock
+        rcc.apbenr1().modify(|_, w| w.i2c1en().set_bit());
 
-        let (active_page, write_ptr) = match (a_valid, b_valid) {
-            (true, false) => (PAGE_A, a_ptr),
-            (false, true) => (PAGE_B, b_ptr),
+        // Reset peripheral
+        rcc.apbrstr1().modify(|_, w| w.i2c1rst().set_bit());
+        rcc.apbrstr1().modify(|_, w| w.i2c1rst().clear_bit());
 
-            // both valid OR both invalid → choose most recent (longer log)
-            _ => {
-                if a_ptr >= b_ptr {
-                    (PAGE_A, a_ptr)
-                } else {
-                    (PAGE_B, b_ptr)
-                }
-            }
-        };
+        // Timing (100kHz @ 48MHz)
+        i2c.timingr().write(|w| unsafe { w.bits(0x20303E5D) });
 
-        Self {
-            flash,
-            active_page,
-            write_ptr,
-        }
+        // Enable I2C
+        i2c.cr1().modify(|_, w| w.pe().set_bit());
+
+        Self { i2c }
     }
 
-    // ================================================================
-    // PAGE SCAN
-    // ================================================================
-    ///
-    /// Returns:
-    /// - next write pointer
-    /// - whether page is COMMITTED
-    ///
-    fn scan_page(page: u32) -> (u32, bool) {
-        let mut addr = page;
-        let end = page + LAST_SLOT_OFFSET; // exclude commit slot
+    /// -----------------------------------------------------------------------
+    /// Write buffer (handles page boundaries)
+    /// -----------------------------------------------------------------------
+    pub fn write(&self, mut addr: u8, data: &[u8]) {
+        cortex_m::interrupt::free(|_| {
+            let mut offset = 0;
 
-        while addr < end {
-            let word = unsafe { core::ptr::read_volatile(addr as *const u64) };
+            while offset < data.len() {
+                let page_offset = (addr as usize) % PAGE_SIZE;
+                let space = PAGE_SIZE - page_offset;
+                let chunk = core::cmp::min(space, data.len() - offset);
 
-            if word == ERASED {
+                self.write_page(addr, &data[offset..offset + chunk]);
+
+                addr += chunk as u8;
+                offset += chunk;
+
+                self.wait_write_cycle();
+            }
+        });
+    }
+
+    /// -----------------------------------------------------------------------
+    /// Write single page (max 8 bytes)
+    /// -----------------------------------------------------------------------
+    fn write_page(&self, mem_addr: u8, data: &[u8]) {
+        let i2c = &self.i2c;
+
+        // Wait bus free
+        while i2c.isr().read().busy().bit_is_set() {}
+
+        // START (write, no AUTOEND)
+        i2c.cr2().write(|w| unsafe {
+            w.sadd()
+                .bits((EEPROM_ADDR << 1) as u16)
+                .nbytes()
+                .bits((data.len() + 1) as u8)
+                .rd_wrn()
+                .clear_bit()
+                .autoend()
+                .clear_bit()
+                .start()
+                .set_bit()
+        });
+
+        // Send memory address
+        while i2c.isr().read().txis().bit_is_clear() {}
+        i2c.txdr().write(|w| unsafe { w.bits(mem_addr as u32) });
+
+        // Send data
+        for &b in data {
+            while i2c.isr().read().txis().bit_is_clear() {}
+            i2c.txdr().write(|w| unsafe { w.bits(b as u32) });
+        }
+
+        // Wait transfer complete
+        while i2c.isr().read().tc().bit_is_clear() {}
+
+        // Generate STOP
+        i2c.cr2().modify(|_, w| w.stop().set_bit());
+
+        while i2c.isr().read().stopf().bit_is_clear() {}
+        i2c.icr().write(|w| w.stopcf().clear());
+    }
+
+    /// -----------------------------------------------------------------------
+    /// Read buffer
+    /// -----------------------------------------------------------------------
+    pub fn read(&self, addr: u8, buf: &mut [u8]) {
+        let i2c = &self.i2c;
+
+        while i2c.isr().read().busy().bit_is_set() {}
+
+        // Write memory address
+        i2c.cr2().write(|w| unsafe {
+            w.sadd()
+                .bits((EEPROM_ADDR << 1) as u16)
+                .nbytes()
+                .bits(1)
+                .rd_wrn()
+                .clear_bit()
+                .autoend()
+                .clear_bit()
+                .start()
+                .set_bit()
+        });
+
+        while i2c.isr().read().txis().bit_is_clear() {}
+        i2c.txdr().write(|w| unsafe { w.bits(addr as u32) });
+
+        while i2c.isr().read().tc().bit_is_clear() {}
+
+        // Read phase
+        i2c.cr2().write(|w| unsafe {
+            w.sadd()
+                .bits((EEPROM_ADDR << 1) as u16)
+                .nbytes()
+                .bits(buf.len() as u8)
+                .rd_wrn()
+                .set_bit()
+                .autoend()
+                .set_bit()
+                .start()
+                .set_bit()
+        });
+
+        for b in buf.iter_mut() {
+            while i2c.isr().read().rxne().bit_is_clear() {}
+            *b = i2c.rxdr().read().bits() as u8;
+        }
+
+        while i2c.isr().read().stopf().bit_is_clear() {}
+        i2c.icr().write(|w| w.stopcf().clear());
+    }
+
+    /// -----------------------------------------------------------------------
+    /// ACK polling (wait for internal write completion)
+    /// -----------------------------------------------------------------------
+    fn wait_write_cycle(&self) {
+        let i2c = &self.i2c;
+
+        loop {
+            while i2c.isr().read().busy().bit_is_set() {}
+
+            // Try addressing device
+            i2c.cr2().write(|w| unsafe {
+                w.sadd()
+                    .bits((EEPROM_ADDR << 1) as u16)
+                    .nbytes()
+                    .bits(0)
+                    .rd_wrn()
+                    .clear_bit()
+                    .start()
+                    .set_bit()
+            });
+
+            let isr = i2c.isr().read();
+
+            if isr.nackf().bit_is_clear() {
+                // Device responded → STOP
+                i2c.cr2().modify(|_, w| w.stop().set_bit());
+
+                while i2c.isr().read().stopf().bit_is_clear() {}
+                i2c.icr().write(|w| w.stopcf().clear());
                 break;
             }
 
-            if Self::decode(word).is_none() {
-                break;
-            }
-
-            addr += SLOT_SIZE;
+            // Clear NACK and retry
+            i2c.icr().write(|w| w.nackcf().clear());
         }
-
-        let committed = Self::is_page_committed(page);
-
-        (addr, committed)
-    }
-
-    // ================================================================
-    // COMMIT CHECK
-    // ================================================================
-    ///
-    /// A page is VALID only if commit marker exists at last slot
-    ///
-    fn is_page_committed(page: u32) -> bool {
-        let addr = page + LAST_SLOT_OFFSET;
-        let word = unsafe { core::ptr::read_volatile(addr as *const u64) };
-        word == PAGE_MAGIC
-    }
-
-    // ================================================================
-    // ENCODE / DECODE
-    // ================================================================
-    ///
-    /// Simple format:
-    /// [ ID (8-bit) | VALUE (56-bit) ]
-    ///
-    #[inline(always)]
-    fn encode(id: u8, value: u64) -> u64 {
-        ((id as u64) << 56) | (value & 0x00FF_FFFF_FFFF_FFFF)
-    }
-
-    #[inline(always)]
-    fn decode(word: u64) -> Option<(u8, u64)> {
-        if word == ERASED || word == PAGE_MAGIC {
-            return None;
-        }
-
-        let id = (word >> 56) as u8;
-        let value = word & 0x00FF_FFFF_FFFF_FFFF;
-
-        Some((id, value))
-    }
-
-    // ================================================================
-    // READ LAST VALUE
-    // ================================================================
-    ///
-    /// Reverse scan → returns most recent value
-    ///
-    pub fn read(&self, id: u8) -> Option<u64> {
-        let mut addr = self.write_ptr;
-
-        while addr > self.active_page {
-            addr -= SLOT_SIZE;
-
-            let word = unsafe { core::ptr::read_volatile(addr as *const u64) };
-
-            if let Some((i, v)) = Self::decode(word)
-                && i == id
-            {
-                return Some(v);
-            }
-        }
-
-        None
-    }
-
-    // ================================================================
-    // WRITE ENTRY
-    // ================================================================
-    ///
-    /// Automatically triggers page swap if needed
-    ///
-    pub fn write(&mut self, id: u8, value: u64) -> Result<(), FlashError> {
-        if self.is_near_full() {
-            return self.swap_pages(id, value);
-        }
-
-        self.append(id, value)
-    }
-
-    // ================================================================
-    // APPEND ENTRY
-    // ================================================================
-    ///
-    /// Writes single slot safely
-    ///
-    fn append(&mut self, id: u8, value: u64) -> Result<(), FlashError> {
-        let addr = self.write_ptr;
-
-        self.flash
-            .write_double_word(addr, Self::encode(id, value))?;
-
-        self.write_ptr += SLOT_SIZE;
-
-        Ok(())
-    }
-
-    // ================================================================
-    // CAPACITY CHECK
-    // ================================================================
-    ///
-    /// Ensures:
-    /// - space for at least ONE data slot
-    /// - space for commit marker
-    ///
-    fn is_near_full(&self) -> bool {
-        self.write_ptr >= self.active_page + LAST_SLOT_OFFSET - SLOT_SIZE
-    }
-
-    // ================================================================
-    // PAGE SWAP (SAFE + ATOMIC)
-    // ================================================================
-    ///
-    /// Steps:
-    /// 1. Erase new page
-    /// 2. Copy valid entries
-    /// 3. Write new value
-    /// 4. WRITE COMMIT MARKER (FINAL STEP)
-    ///
-    /// Power-fail safety:
-    /// - If commit not written → page ignored
-    /// - Old page remains valid
-    ///
-    fn swap_pages(&mut self, id: u8, value: u64) -> Result<(), FlashError> {
-        let new_page = if self.active_page == PAGE_A {
-            PAGE_B
-        } else {
-            PAGE_A
-        };
-
-        // 1. ERASE NEW PAGE
-        self.flash.erase_page(new_page)?;
-
-        let mut dst = new_page;
-        let mut src = self.active_page;
-
-        // 2. COPY VALID ENTRIES
-        while src < self.write_ptr {
-            let word = unsafe { core::ptr::read_volatile(src as *const u64) };
-
-            if let Some((i, v)) = Self::decode(word)
-                && i != id
-            {
-                self.flash.write_double_word(dst, Self::encode(i, v))?;
-                dst += SLOT_SIZE;
-            }
-
-            src += SLOT_SIZE;
-        }
-
-        // 3. WRITE NEW VALUE
-        self.flash.write_double_word(dst, Self::encode(id, value))?;
-        dst += SLOT_SIZE;
-
-        // 4. WRITE COMMIT MARKER (CRITICAL ATOMIC POINT)
-        let commit_addr = new_page + LAST_SLOT_OFFSET;
-        self.flash.write_double_word(commit_addr, PAGE_MAGIC)?;
-
-        // 5. SWITCH ACTIVE PAGE
-        self.active_page = new_page;
-        self.write_ptr = dst;
-
-        Ok(())
     }
 }

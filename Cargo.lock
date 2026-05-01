@@ -118,6 +118,7 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-rtic",
  "panic-halt",
+ "rmodbus",
  "stm32c0",
  "systick-monotonic",
 ]
@@ -174,6 +175,12 @@ dependencies = [
  "spin",
  "stable_deref_trait",
 ]
+
+[[package]]
+name = "ieee754"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9007da9cacbd3e6343da136e98b0d2df013f553d35bdec8b518f07bea768e19c"
 
 [[package]]
 name = "indexmap"
@@ -255,6 +262,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rmodbus"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae086fe401655097112f1bd988012c0334d19b0c495128b256f1506873c6ba8f"
+dependencies = [
+ "ieee754",
 ]
 
 [[package]]

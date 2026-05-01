@@ -2,7 +2,7 @@
 runner = "probe-rs run --chip STM32C031K6 --protocol swd"
 
 rustflags = [
-  "-C", "link-arg=-Tdro08.x",
+  "-C", "link-arg=-Tlink.x",
   "-C", "llvm-args=--inline-threshold=100",
   "-C", "no-vectorize-loops",
 ]
