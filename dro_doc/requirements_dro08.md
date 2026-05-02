@@ -163,7 +163,7 @@ Engineering Value = Pulse Count × Scaling Factor
 ## 8. Modbus RTU (RS485)
 
 * 9600, 8N1
-* Modbus slave address stored in flash
+* Modbus slave address stored in eeprom
 * Address shall be editable via push buttons (UI configuration mode)
 
 ### Address Configuration Requirements

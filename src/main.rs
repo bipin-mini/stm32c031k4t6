@@ -42,12 +42,12 @@ mod app {
     #[shared]
     struct Shared {
         snapshot: PowerSnapshot,
+        uart: Uart,
+        modbus: Modbus,
     }
 
     #[local]
     struct Local {
-        uart: Uart,
-        modbus: Modbus,
         eeprom: Eeprom,
         gpiob: pac::GPIOB,
     }
@@ -61,10 +61,7 @@ mod app {
         bsp::init_gpioa(&dp.GPIOA);
         bsp::init_usart1_pins(&dp.GPIOA);
         bsp::init_rs485_de(&dp.GPIOA);
-
-        // ✅ FIX: use GPIOB for I2C
         bsp::init_i2c1_pins(&dp.GPIOB);
-
         bsp::init_exti(&dp.EXTI);
 
         // Drivers
@@ -72,9 +69,13 @@ mod app {
         drivers::relay::init(&dp.GPIOB);
         drivers::tm1638::init();
 
-        let uart = Uart::new(dp.USART1, &dp.RCC);
-        let modbus = Modbus::new();
         let eeprom = Eeprom::new(dp.I2C1, &dp.RCC);
+
+        // ---------------- FIX: create Modbus first ----------------
+        let modbus = Modbus::new();
+        let slave_id = modbus.slave_id();
+
+        let uart = Uart::new(dp.USART1, &dp.RCC, slave_id);
 
         let mono = Systick::new(ctx.core.SYST, SYSCLK_HZ);
 
@@ -84,10 +85,10 @@ mod app {
                     encoder: 0,
                     valid: false,
                 },
-            },
-            Local {
                 uart,
                 modbus,
+            },
+            Local {
                 eeprom,
                 gpiob: dp.GPIOB,
             },
@@ -95,15 +96,19 @@ mod app {
         )
     }
 
+    // ------------------------------------------------------------
+    // Encoder ISR
+    // ------------------------------------------------------------
     #[task(binds = EXTI0_1, priority = 2)]
     fn exti0_1(_ctx: exti0_1::Context) {
         drivers::encoder::isr();
     }
 
+    // ------------------------------------------------------------
+    // Power fail ISR
+    // ------------------------------------------------------------
     #[task(binds = EXTI4_15, priority = 3, shared = [snapshot])]
     fn power_fail_irq(mut ctx: power_fail_irq::Context) {
-        cortex_m::interrupt::disable();
-
         let encoder = drivers::encoder::get_count() as u64;
 
         ctx.shared.snapshot.lock(|snap| {
@@ -118,34 +123,34 @@ mod app {
         exti.fpr1().write(|w| unsafe { w.bits(MASK) });
     }
 
-    #[task(binds = USART1, priority = 1, local = [uart, modbus])]
+    // ------------------------------------------------------------
+    // USART ISR
+    // ------------------------------------------------------------
+    #[task(binds = USART1, priority = 2, shared = [uart, modbus])]
     fn usart1_irq(ctx: usart1_irq::Context) {
-        let uart = ctx.local.uart;
-        let usart = &uart.usart;
-
-        let isr = usart.isr().read();
-
-        // ---------------- RX BYTE ----------------
-        if isr.rxfne().bit_is_set() {
-            let b = usart.rdr().read().bits() as u8;
-            ctx.local.modbus.push_byte(b);
-        }
-
-        // ---------------- FRAME COMPLETE ----------------
-        if isr.rtof().bit_is_set() {
-            usart.icr().write(|w| w.rtocf().clear());
-
-            ctx.local.modbus.process(uart);
-        }
-
-        // ---------------- TX COMPLETE ----------------
-        if isr.tc().bit_is_set() {
-            usart.icr().write(|w| w.tccf().clear());
-        }
+        (ctx.shared.uart, ctx.shared.modbus).lock(|uart, modbus| {
+            uart.isr(|event| match event {
+                crate::drivers::uart::Event::Rx(b) => modbus.push_byte(b),
+                crate::drivers::uart::Event::FrameEnd => modbus.frame_complete(),
+                crate::drivers::uart::Event::TxDone => {}
+            });
+        });
     }
-    #[idle(shared = [snapshot], local = [eeprom, gpiob])]
+
+    // ------------------------------------------------------------
+    // Main loop
+    // ------------------------------------------------------------
+    #[idle(shared = [snapshot, uart, modbus], local = [eeprom, gpiob])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
+            // ---------------- Modbus processing ----------------
+            ctx.shared.uart.lock(|uart| {
+                ctx.shared.modbus.lock(|modbus| {
+                    modbus.poll(uart);
+                });
+            });
+
+            // ---------------- Power-fail commit ----------------
             let mut do_commit = None;
 
             ctx.shared.snapshot.lock(|snap| {
